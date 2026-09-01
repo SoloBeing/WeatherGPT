@@ -8,6 +8,7 @@ precipitation, weather code. Sources: Open-Meteo → IMD fallback.
 import json
 import logging
 
+from app.database.redis_cache import cache
 from app.data_sources.openmeteo import OpenMeteoClient
 from app.weather_tools.location_resolver import resolve_location
 
@@ -21,8 +22,9 @@ async def get_current_weather(location: str) -> str:
 
     Flow:
         1. Resolve location name → lat/lon (Open-Meteo geocoding)
-        2. Fetch current weather → ForecastPoint (Open-Meteo forecast)
-        3. Return JSON string for LLM consumption
+        2. Check Redis cache first (TTL 1h)
+        3. If cache miss, fetch current weather → ForecastPoint (Open-Meteo)
+        4. Populate cache and return JSON string for LLM consumption
 
     Args:
         location: City or place name (e.g. "Delhi", "Mumbai", "Jaipur").
@@ -49,7 +51,15 @@ async def get_current_weather(location: str) -> str:
     if best.country:
         location_display += f", {best.country}"
 
-    # Step 2: Fetch current weather from Open-Meteo
+    # Step 2: Check cache
+    cached_data = await cache.get_current_weather(best.lat, best.lon)
+    if cached_data:
+        logger.info("Cache HIT for current weather at %s (%.4f, %.4f)", location_display, best.lat, best.lon)
+        return cached_data
+
+    logger.debug("Cache MISS for current weather at %s (%.4f, %.4f)", location_display, best.lat, best.lon)
+
+    # Step 3: Fetch current weather from Open-Meteo
     client = OpenMeteoClient()
     try:
         point = await client.fetch_current(best.lat, best.lon)
@@ -67,5 +77,10 @@ async def get_current_weather(location: str) -> str:
         point.weather_description,
     )
 
+    data_json = point.model_dump_json(exclude_none=True)
+
+    # Step 4: Write to cache
+    await cache.set_current_weather(best.lat, best.lon, data_json)
+
     # Return as JSON string for LLM consumption
-    return point.model_dump_json(exclude_none=True)
+    return data_json
