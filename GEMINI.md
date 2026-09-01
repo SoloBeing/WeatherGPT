@@ -92,33 +92,35 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 ## Current State (updated each session)
 
-**Last session:** 03 (2026-09-01)  
+**Last session:** 04 (2026-09-01)  
 **What exists:**
-- ✅ **POST /chat** works end-to-end with real Open-Meteo current weather and multi-day forecasts
-- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `ChatRequest/Response`, `LocationMatch` schemas
+- ✅ **POST /chat** works end-to-end with Open-Meteo forecasts and SACHET/IMD active disaster alerts
+- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch` schemas
 - ✅ Open-Meteo client (`fetch_current` + `fetch_forecast` with 15 daily & 8 hourly params)
-- ✅ Location resolver (Open-Meteo geocoding, India-prioritised)
-- ✅ `get_current_weather` & `get_forecast` tools with Redis cache-aside (TTL 1h)
+- ✅ SACHET CAP-XML Poller & active alert registry with spatial polygon and district/state matching
+- ✅ Location resolver (Open-Meteo geocoding + 36 Indian States/UTs Gazetteer)
+- ✅ `get_current_weather`, `get_forecast`, `get_alerts` tools with Redis cache-aside
 - ✅ Redis cache client (`database/redis_cache.py`) with fail-open fallback
+- ✅ WebSocket live alert streaming (`api_gateway/routes/websocket.py` on `/ws/alerts`)
+- ✅ FCM push notification service (`external_services/fcm.py`) with severity topic dispatch
 - ✅ LLM orchestrator (litellm tool-calling loop, multi-turn conversation session history)
-- ✅ Response templates (English + Hindi for current and multi-day forecast)
-- ✅ FastAPI app with CORS, /chat route with `session_id`, /health check
+- ✅ Response templates (English + Hindi for current weather, forecasts, and disaster alerts)
+- ✅ FastAPI app with CORS, /chat route with `session_id`, /ws/alerts, /health check
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Next Session (04) — What To Build
+## Next Session (05) — What To Build
 
-Priority 2: **SACHET alerts + FCM push + WebSocket live streaming**
+Priority 3: **Bhashini voice (ASR + TTS) + Multilingual translation & speech synthesis**
 
 ### Concrete tasks:
-1. **AlertRecord schema & DB model** — CAP-XML data structure in `schemas_and_models/`
-2. **SACHET alert poller** — Polling & parsing NDMA SACHET CAP feeds in `ingestion_pipelines/sachet_poller.py`
-3. **`get_alerts` tool** — Spatial/district alert lookup tool in `weather_tools/alerts_tool.py`
-4. **WebSocket endpoint** — Real-time alert feed in `api_gateway/routes/ws.py`
-5. **FCM push notifications** — Push critical alerts to devices in `external_services/fcm.py`
+1. **Bhashini API client** — `external_services/bhashini.py` (ULCA pipeline: ASR, NMT translation, TTS speech synthesis for 22 Indian languages)
+2. **Voice router** — Audio input upload / streaming endpoint in `api_gateway/routes/voice.py`
+3. **Multilingual voice-to-voice flow** — Audio in → Bhashini ASR (native script) → intent classifier → weather/alerts tool → verified template → Bhashini TTS → Audio out
+4. **IndicTrans2 / IndicConformer fallback** — Graceful fallback if Bhashini rate-limits
 
-### Definition of done for Session 04:
-You can query active disaster/weather alerts for any Indian district/state via chat, receive live alerts over WebSocket, and push alert notifications via FCM.
+### Definition of done for Session 05:
+You can send speech input (voice query in Hindi/Tamil/Telugu/etc.) and receive natural synthesized speech output with real weather data.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -127,7 +129,7 @@ You can query active disaster/weather alerts for any Indian district/state via c
 | 1 (Aug 31) | 01 | ✅ Deps, scaffold, memory | Setup |
 | 2 (Sep 01) | 02 | ✅ FastAPI + Open-Meteo + get_current + chat | P1: carries demo |
 | 3 (Sep 02) | 03 | ✅ get_forecast + Redis cache + multi-turn chat | P1: carries demo |
-| 4 (Sep 03) | 04 | SACHET alerts + FCM push + WebSocket | P2: carries demo |
+| 4 (Sep 03) | 04 | ✅ SACHET alerts + FCM push + WebSocket | P2: carries demo |
 | 5 (Sep 04) | 05 | Bhashini voice (ASR + TTS) + multilingual templates | P3: carries demo |
 | 6 (Sep 05) | 06 | GFS/Zarr ingestion pipeline + DB models + Alembic | P4: meteorological score |
 | 7 (Sep 06) | 07 | Docker Compose, polish, demo prep, final tests | Ship |
