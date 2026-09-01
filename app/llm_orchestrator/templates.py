@@ -13,7 +13,7 @@ Example:
 Templates are verifiable, instant, and never invent a number.
 """
 
-from app.schemas_and_models.schemas import ForecastPoint
+from app.schemas_and_models.schemas import ForecastPoint, ForecastTimeline
 
 # ---------------------------------------------------------------------------
 # English templates
@@ -28,6 +28,11 @@ CURRENT_WEATHER_EN = (
     "Cloud cover: {cloud_cover}%."
 )
 
+DAILY_ITEM_EN = (
+    "• {date}: {description}, {min_temp}°C to {max_temp}°C"
+    "{rain_info}"
+)
+
 # ---------------------------------------------------------------------------
 # Hindi templates
 # ---------------------------------------------------------------------------
@@ -39,6 +44,11 @@ CURRENT_WEATHER_HI = (
     "हवा: {wind_speed} किमी/घंटा। "
     "दबाव: {pressure} hPa। "
     "बादल: {cloud_cover}%।"
+)
+
+DAILY_ITEM_HI = (
+    "• {date}: {description}, तापमान {min_temp}°C से {max_temp}°C"
+    "{rain_info}"
 )
 
 
@@ -67,3 +77,49 @@ def format_current_weather(point: ForecastPoint, language: str = "en") -> str:
         pressure=point.pressure_hpa if point.pressure_hpa is not None else "N/A",
         cloud_cover=point.cloud_cover_pct if point.cloud_cover_pct is not None else "N/A",
     )
+
+
+def format_forecast(timeline: ForecastTimeline, language: str = "en") -> str:
+    """Fill verified templates with ForecastTimeline data.
+
+    Args:
+        timeline: ForecastTimeline with daily weather forecasts.
+        language: ISO 639-1 language code ("en" or "hi").
+
+    Returns:
+        Formatted multi-line forecast summary.
+    """
+    loc = timeline.location_name or f"{timeline.lat:.2f}, {timeline.lon:.2f}"
+    is_hi = language == "hi"
+
+    lines = [
+        f"{loc} के लिए {len(timeline.daily)} दिनों का मौसम पूर्वानुमान:"
+        if is_hi
+        else f"{len(timeline.daily)}-day weather forecast for {loc}:"
+    ]
+
+    item_template = DAILY_ITEM_HI if is_hi else DAILY_ITEM_EN
+
+    for day in timeline.daily:
+        rain_info = ""
+        if day.precipitation_probability_max_pct is not None:
+            if is_hi:
+                rain_info = f", बारिश की संभावना: {day.precipitation_probability_max_pct}%"
+            else:
+                rain_info = f", rain chance: {day.precipitation_probability_max_pct}%"
+        elif day.precipitation_sum_mm is not None and day.precipitation_sum_mm > 0:
+            if is_hi:
+                rain_info = f", बारिश: {day.precipitation_sum_mm} मिमी"
+            else:
+                rain_info = f", precip: {day.precipitation_sum_mm} mm"
+
+        line = item_template.format(
+            date=day.date.strftime("%a, %d %b") if hasattr(day.date, "strftime") else str(day.date),
+            description=day.weather_description or ("अज्ञात" if is_hi else "Unknown"),
+            min_temp=day.temp_min_c if day.temp_min_c is not None else "N/A",
+            max_temp=day.temp_max_c if day.temp_max_c is not None else "N/A",
+            rain_info=rain_info,
+        )
+        lines.append(line)
+
+    return "\n".join(lines)
