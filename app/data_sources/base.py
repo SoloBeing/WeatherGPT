@@ -18,7 +18,7 @@ ForecastPoint includes:
 
 from abc import ABC, abstractmethod
 
-from app.schemas_and_models.schemas import ForecastPoint
+from app.schemas_and_models.schemas import ForecastPoint, ForecastTimeline
 
 
 class BaseDataSource(ABC):
@@ -27,7 +27,8 @@ class BaseDataSource(ABC):
     Every concrete data source must:
     1. Set `source_name` to a unique identifier
     2. Implement `fetch_current()` returning a ForecastPoint
-    3. Implement `close()` for resource cleanup
+    3. Implement `fetch_forecast()` returning a ForecastTimeline
+    4. Implement `close()` for resource cleanup
     """
 
     source_name: str = "unknown"
@@ -42,6 +43,27 @@ class BaseDataSource(ABC):
 
         Returns:
             ForecastPoint with current conditions populated.
+        """
+        ...
+
+    @abstractmethod
+    async def fetch_forecast(
+        self,
+        lat: float,
+        lon: float,
+        days: int = 7,
+        include_hourly: bool = False,
+    ) -> ForecastTimeline:
+        """Fetch multi-day / hourly forecast for a geographic point.
+
+        Args:
+            lat: Latitude (WGS84)
+            lon: Longitude (WGS84)
+            days: Number of forecast days (1 to 16)
+            include_hourly: Whether to include detailed hourly slices
+
+        Returns:
+            ForecastTimeline with daily and optionally hourly forecasts.
         """
         ...
 

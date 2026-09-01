@@ -7,13 +7,18 @@ This is the always-available fallback behind the same internal interface.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import httpx
 
 from app.config import settings
 from app.data_sources.base import BaseDataSource
-from app.schemas_and_models.schemas import ForecastPoint
+from app.schemas_and_models.schemas import (
+    DailyForecast,
+    ForecastPoint,
+    ForecastTimeline,
+    HourlyForecast,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,37 @@ _CURRENT_PARAMS: list[str] = [
     "wind_speed_10m",
     "wind_direction_10m",
     "wind_gusts_10m",
+]
+
+# Daily forecast variables to request from Open-Meteo
+_DAILY_PARAMS: list[str] = [
+    "weather_code",
+    "temperature_2m_max",
+    "temperature_2m_min",
+    "apparent_temperature_max",
+    "apparent_temperature_min",
+    "sunrise",
+    "sunset",
+    "uv_index_max",
+    "precipitation_sum",
+    "rain_sum",
+    "snowfall_sum",
+    "precipitation_probability_max",
+    "wind_speed_10m_max",
+    "wind_gusts_10m_max",
+    "wind_direction_10m_dominant",
+]
+
+# Hourly forecast variables (when detailed slice is requested)
+_HOURLY_PARAMS: list[str] = [
+    "temperature_2m",
+    "relative_humidity_2m",
+    "apparent_temperature",
+    "precipitation_probability",
+    "precipitation",
+    "weather_code",
+    "wind_speed_10m",
+    "is_day",
 ]
 
 
@@ -147,6 +183,142 @@ class OpenMeteoClient(BaseDataSource):
             weather_code=weather_code,
             weather_description=WMO_WEATHER_CODES.get(weather_code, "Unknown"),
             is_day=bool(current.get("is_day")),
+        )
+
+    async def fetch_forecast(
+        self,
+        lat: float,
+        lon: float,
+        days: int = 7,
+        include_hourly: bool = False,
+    ) -> ForecastTimeline:
+        """Fetch multi-day weather forecast from Open-Meteo.
+
+        Args:
+            lat: Latitude (WGS84)
+            lon: Longitude (WGS84)
+            days: Forecast horizon in days (1 to 16, default 7)
+            include_hourly: Whether to include hourly breakdown
+
+        Returns:
+            ForecastTimeline containing daily and optionally hourly forecast items.
+        """
+        forecast_days = max(1, min(days, 16))
+        params: dict = {
+            "latitude": lat,
+            "longitude": lon,
+            "daily": ",".join(_DAILY_PARAMS),
+            "timezone": "auto",
+            "wind_speed_unit": "kmh",
+            "forecast_days": forecast_days,
+        }
+
+        if include_hourly:
+            params["hourly"] = ",".join(_HOURLY_PARAMS)
+
+        resp = await self._client.get("/forecast", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+        daily_data = data.get("daily", {})
+        times = daily_data.get("time", [])
+
+        daily_items: list[DailyForecast] = []
+        for i, t_str in enumerate(times):
+            try:
+                f_date = date.fromisoformat(t_str)
+            except ValueError:
+                continue
+
+            w_code = daily_data.get("weather_code", [None])[i] if i < len(daily_data.get("weather_code", [])) else None
+
+            # Helper for safe indexing
+            def _get_val(key: str, idx: int):
+                vals = daily_data.get(key, [])
+                return vals[idx] if idx < len(vals) else None
+
+            # Parse sunrise / sunset
+            sunrise_str = _get_val("sunrise", i)
+            sunset_str = _get_val("sunset", i)
+            sunrise_dt = None
+            sunset_dt = None
+            if sunrise_str:
+                try:
+                    sunrise_dt = datetime.fromisoformat(sunrise_str)
+                except ValueError:
+                    pass
+            if sunset_str:
+                try:
+                    sunset_dt = datetime.fromisoformat(sunset_str)
+                except ValueError:
+                    pass
+
+            daily_items.append(
+                DailyForecast(
+                    date=f_date,
+                    temp_max_c=_get_val("temperature_2m_max", i),
+                    temp_min_c=_get_val("temperature_2m_min", i),
+                    feels_like_max_c=_get_val("apparent_temperature_max", i),
+                    feels_like_min_c=_get_val("apparent_temperature_min", i),
+                    precipitation_sum_mm=_get_val("precipitation_sum", i),
+                    rain_sum_mm=_get_val("rain_sum", i),
+                    snowfall_sum_cm=_get_val("snowfall_sum", i),
+                    precipitation_probability_max_pct=_get_val("precipitation_probability_max", i),
+                    wind_speed_max_kmh=_get_val("wind_speed_10m_max", i),
+                    wind_gusts_max_kmh=_get_val("wind_gusts_10m_max", i),
+                    wind_direction_dominant_deg=_get_val("wind_direction_10m_dominant", i),
+                    uv_index_max=_get_val("uv_index_max", i),
+                    weather_code=w_code,
+                    weather_description=WMO_WEATHER_CODES.get(w_code, "Unknown") if w_code is not None else None,
+                    sunrise=sunrise_dt,
+                    sunset=sunset_dt,
+                )
+            )
+
+        hourly_items: list[HourlyForecast] | None = None
+        if include_hourly and "hourly" in data:
+            hourly_data = data["hourly"]
+            h_times = hourly_data.get("time", [])
+            hourly_items = []
+            for j, ht_str in enumerate(h_times):
+                try:
+                    h_dt = datetime.fromisoformat(ht_str)
+                except ValueError:
+                    continue
+
+                def _get_h_val(key: str, idx: int):
+                    vals = hourly_data.get(key, [])
+                    return vals[idx] if idx < len(vals) else None
+
+                hw_code = _get_h_val("weather_code", j)
+                hourly_items.append(
+                    HourlyForecast(
+                        valid_at=h_dt,
+                        temperature_c=_get_h_val("temperature_2m", j),
+                        feels_like_c=_get_h_val("apparent_temperature", j),
+                        humidity_pct=_get_h_val("relative_humidity_2m", j),
+                        precipitation_mm=_get_h_val("precipitation", j),
+                        precipitation_probability_pct=_get_h_val("precipitation_probability", j),
+                        wind_speed_kmh=_get_h_val("wind_speed_10m", j),
+                        weather_code=hw_code,
+                        weather_description=WMO_WEATHER_CODES.get(hw_code, "Unknown") if hw_code is not None else None,
+                        is_day=bool(_get_h_val("is_day", j)) if _get_h_val("is_day", j) is not None else None,
+                    )
+                )
+
+        logger.debug(
+            "Open-Meteo forecast: lat=%.4f lon=%.4f days=%d items=%d",
+            lat, lon, forecast_days, len(daily_items),
+        )
+
+        return ForecastTimeline(
+            source=self.source_name,
+            issued_at=datetime.now(timezone.utc),
+            lat=data["latitude"],
+            lon=data["longitude"],
+            timezone=data.get("timezone"),
+            daily=daily_items,
+            hourly=hourly_items,
         )
 
     async def close(self) -> None:
