@@ -8,7 +8,7 @@ Core types:
   - LocationMatch: gazetteer fuzzy match result
 """
 
-from datetime import datetime
+from datetime import date as dt_date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -47,6 +47,56 @@ class ForecastPoint(BaseModel):
     weather_code: Optional[int] = Field(None, description="WMO weather code")
     weather_description: Optional[str] = Field(None, description="Human-readable weather description")
     is_day: Optional[bool] = Field(None, description="True if daytime at the location")
+
+
+class DailyForecast(BaseModel):
+    """Daily forecast summary for a single day."""
+
+    date: dt_date = Field(..., description="Forecast date (YYYY-MM-DD)")
+    temp_max_c: Optional[float] = Field(None, description="Maximum daily temperature in °C")
+    temp_min_c: Optional[float] = Field(None, description="Minimum daily temperature in °C")
+    feels_like_max_c: Optional[float] = Field(None, description="Maximum apparent temperature in °C")
+    feels_like_min_c: Optional[float] = Field(None, description="Minimum apparent temperature in °C")
+    precipitation_sum_mm: Optional[float] = Field(None, description="Total daily precipitation in mm")
+    rain_sum_mm: Optional[float] = Field(None, description="Total daily rain in mm")
+    snowfall_sum_cm: Optional[float] = Field(None, description="Total daily snowfall in cm")
+    precipitation_probability_max_pct: Optional[int] = Field(None, description="Max probability of precipitation in %")
+    wind_speed_max_kmh: Optional[float] = Field(None, description="Maximum wind speed in km/h")
+    wind_gusts_max_kmh: Optional[float] = Field(None, description="Maximum wind gusts in km/h")
+    wind_direction_dominant_deg: Optional[float] = Field(None, description="Dominant wind direction in degrees")
+    uv_index_max: Optional[float] = Field(None, description="Maximum UV index")
+    weather_code: Optional[int] = Field(None, description="Dominant WMO weather code for the day")
+    weather_description: Optional[str] = Field(None, description="Human-readable weather description")
+    sunrise: Optional[datetime] = Field(None, description="Sunrise time")
+    sunset: Optional[datetime] = Field(None, description="Sunset time")
+
+
+class HourlyForecast(BaseModel):
+    """Hourly forecast slice."""
+
+    valid_at: datetime = Field(..., description="Time of the forecast slice")
+    temperature_c: Optional[float] = Field(None, description="Temperature in °C")
+    feels_like_c: Optional[float] = Field(None, description="Apparent temperature in °C")
+    humidity_pct: Optional[float] = Field(None, description="Relative humidity in %")
+    precipitation_mm: Optional[float] = Field(None, description="Precipitation in mm")
+    precipitation_probability_pct: Optional[int] = Field(None, description="Precipitation probability in %")
+    wind_speed_kmh: Optional[float] = Field(None, description="Wind speed in km/h")
+    weather_code: Optional[int] = Field(None, description="WMO weather code")
+    weather_description: Optional[str] = Field(None, description="Weather description")
+    is_day: Optional[bool] = Field(None, description="True if daytime")
+
+
+class ForecastTimeline(BaseModel):
+    """Universal multi-day/hourly forecast timeline output."""
+
+    source: str = Field(..., description="Data source identifier, e.g. 'open-meteo', 'gfs'")
+    issued_at: datetime = Field(..., description="When the data was produced")
+    lat: float
+    lon: float
+    location_name: Optional[str] = None
+    timezone: Optional[str] = None
+    daily: list[DailyForecast] = Field(default_factory=list, description="Daily forecast entries")
+    hourly: Optional[list[HourlyForecast]] = Field(None, description="Hourly forecast slices (optional)")
 
 
 class LocationMatch(BaseModel):
