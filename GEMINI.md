@@ -72,7 +72,8 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 - Logs live in `logs/XX-session/step-YY.md`
 - Each step records: what was done, exact bash commands, notable output
-- Session 01 (2026-08-31): Dependencies installed, project scaffolded, initial commit
+- **Git commit at every step** (commit code + step log together) rather than at session end
+- Session summary lives in `logs/XX-session/summary.md` (committed alongside final session state)
 
 ## Configuration
 
@@ -91,34 +92,33 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 ## Current State (updated each session)
 
-**Last session:** 02 (2026-09-01)  
+**Last session:** 03 (2026-09-01)  
 **What exists:**
-- ✅ **POST /chat** works end-to-end with real Open-Meteo data
-- ✅ `ForecastPoint`, `ChatRequest/Response`, `LocationMatch` schemas
-- ✅ Open-Meteo client (async httpx, 14 current params, 28 WMO codes)
+- ✅ **POST /chat** works end-to-end with real Open-Meteo current weather and multi-day forecasts
+- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `ChatRequest/Response`, `LocationMatch` schemas
+- ✅ Open-Meteo client (`fetch_current` + `fetch_forecast` with 15 daily & 8 hourly params)
 - ✅ Location resolver (Open-Meteo geocoding, India-prioritised)
-- ✅ `get_current_weather` tool (location → lat/lon → weather → JSON)
-- ✅ LLM orchestrator (litellm tool-calling loop, Groq gpt-oss-120b)
-- ✅ Response templates (English + Hindi)
-- ✅ FastAPI app with CORS, /chat route, /health check
+- ✅ `get_current_weather` & `get_forecast` tools with Redis cache-aside (TTL 1h)
+- ✅ Redis cache client (`database/redis_cache.py`) with fail-open fallback
+- ✅ LLM orchestrator (litellm tool-calling loop, multi-turn conversation session history)
+- ✅ Response templates (English + Hindi for current and multi-day forecast)
+- ✅ FastAPI app with CORS, /chat route with `session_id`, /health check
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Next Session (03) — What To Build
+## Next Session (04) — What To Build
 
-Priority 1 continued: **get_forecast + location resolver + Redis cache**
+Priority 2: **SACHET alerts + FCM push + WebSocket live streaming**
 
 ### Concrete tasks:
-1. **get_forecast tool** — `weather_tools/forecast.py` (hourly + daily forecasts from Open-Meteo)
-2. **Open-Meteo forecast extension** — Add `fetch_forecast(lat, lon, hours)` to `data_sources/openmeteo.py`
-3. **Register new tool in orchestrator** — Add `get_forecast` to tool definitions + dispatch map
-4. **Redis cache layer** — `database/redis_cache.py` (TTL 1h for point forecasts, cache-aside pattern)
-5. **Wire cache into tools** — Check Redis before calling Open-Meteo
-6. **Conversation history** — Add session support to orchestrator (multi-turn)
-7. **Smoke test** — "What's the 5-day forecast for Mumbai?" returns real hourly/daily data
+1. **AlertRecord schema & DB model** — CAP-XML data structure in `schemas_and_models/`
+2. **SACHET alert poller** — Polling & parsing NDMA SACHET CAP feeds in `ingestion_pipelines/sachet_poller.py`
+3. **`get_alerts` tool** — Spatial/district alert lookup tool in `weather_tools/alerts_tool.py`
+4. **WebSocket endpoint** — Real-time alert feed in `api_gateway/routes/ws.py`
+5. **FCM push notifications** — Push critical alerts to devices in `external_services/fcm.py`
 
-### Definition of done for Session 03:
-You can ask for forecasts and get multi-day data. Repeated queries hit Redis cache instead of Open-Meteo.
+### Definition of done for Session 04:
+You can query active disaster/weather alerts for any Indian district/state via chat, receive live alerts over WebSocket, and push alert notifications via FCM.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -126,7 +126,7 @@ You can ask for forecasts and get multi-day data. Repeated queries hit Redis cac
 |-----|---------|-------|---------------|
 | 1 (Aug 31) | 01 | ✅ Deps, scaffold, memory | Setup |
 | 2 (Sep 01) | 02 | ✅ FastAPI + Open-Meteo + get_current + chat | P1: carries demo |
-| 3 (Sep 02) | 03 | get_forecast + location resolver + Redis cache | P1: carries demo |
+| 3 (Sep 02) | 03 | ✅ get_forecast + Redis cache + multi-turn chat | P1: carries demo |
 | 4 (Sep 03) | 04 | SACHET alerts + FCM push + WebSocket | P2: carries demo |
 | 5 (Sep 04) | 05 | Bhashini voice (ASR + TTS) + multilingual templates | P3: carries demo |
 | 6 (Sep 05) | 06 | GFS/Zarr ingestion pipeline + DB models + Alembic | P4: meteorological score |
