@@ -32,12 +32,18 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 
         → {"reply": "Currently in Delhi: 34°C, partly cloudy...", ...}
     """
-    logger.info("Chat request: '%s' (lang=%s)", request.message, request.language)
+    logger.info(
+        "Chat request: '%s' (lang=%s, session_id=%s)",
+        request.message,
+        request.language,
+        request.session_id,
+    )
 
     try:
         response = await chat(
             message=request.message,
             language=request.language,
+            session_id=request.session_id,
         )
     except Exception as e:
         logger.exception("Chat processing failed: %s", e)

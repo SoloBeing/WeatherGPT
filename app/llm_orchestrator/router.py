@@ -16,12 +16,16 @@ Flow:
 
 import json
 import logging
+import uuid
+from typing import Optional
 
 import litellm
 
 from app.config import settings
+from app.database.redis_cache import cache
 from app.schemas_and_models.schemas import ChatResponse
 from app.weather_tools.current import get_current_weather
+from app.weather_tools.forecast import get_forecast
 
 logger = logging.getLogger(__name__)
 
@@ -35,22 +39,19 @@ You are WeatherGPT, a helpful and friendly weather assistant specialising in Ind
 ## RULES — read these carefully:
 1. You NEVER make up, estimate, or recall weather data from memory.
    Every weather number MUST come from a tool call.
-2. When a user asks about current weather, forecasts, or conditions for
-   ANY location, you MUST call the appropriate tool first.
-3. After receiving tool results, present the data conversationally.
-   Always mention the data source (e.g. "According to Open-Meteo...").
-4. If a tool returns an error, tell the user honestly and suggest
-   alternatives (e.g. try a different city name).
-5. For greetings, chit-chat, or non-weather questions, respond naturally
-   without calling tools.
-6. When presenting weather data:
-   - Lead with the most important info (temperature, conditions)
-   - Include feels-like temperature if significantly different
-   - Mention wind, humidity, and pressure when relevant
-   - Use emoji sparingly to enhance readability (🌤️ ☀️ 🌧️ etc.)
-7. If the user speaks in Hindi or another Indian language, respond in
-   that language while keeping numbers and units in standard form.
-8. Be concise. Don't repeat the same information.
+2. When a user asks about current weather, call `get_current_weather`.
+3. When a user asks about upcoming weather, tomorrow, multi-day, 3-day, 5-day, 7-day,
+   or weekend forecasts, call `get_forecast`.
+4. If a user refers to a location mentioned earlier in the conversation (e.g. "what about tomorrow?"),
+   use that location in your tool call.
+5. After receiving tool results, present the data conversationally and clearly:
+   - For multi-day forecasts: summarize each day with date/day, conditions, min-max temps, and rain probability.
+   - Always mention the data source (e.g. "According to Open-Meteo...").
+6. If a tool returns an error, tell the user honestly and suggest alternatives.
+7. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
+8. If the user speaks in Hindi or another Indian language, respond in that language while keeping
+   numbers and units in standard form.
+9. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🌤️ ☀️ 🌧️ etc.).
 """
 
 # ---------------------------------------------------------------------------
@@ -65,7 +66,7 @@ TOOLS = [
             "description": (
                 "Get current weather conditions for a location. "
                 "Call this whenever the user asks about current weather, "
-                "temperature, or conditions in a city or place."
+                "temperature, or conditions right now in a city or place."
             ),
             "parameters": {
                 "type": "object",
@@ -83,47 +84,116 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_forecast",
+            "description": (
+                "Get multi-day weather forecast (daily high/low temperatures, rain probability, "
+                "precipitation, wind speed, weather conditions) for a location. "
+                "Call this whenever the user asks about upcoming weather, tomorrow, "
+                "the next few days, 3-day/5-day/7-day/weekly forecast, or weekend weather."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": (
+                            "City or place name, e.g. 'Delhi', 'Mumbai', "
+                            "'Jaipur', 'Bengaluru'. Use the common English "
+                            "name for Indian cities."
+                        ),
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of forecast days (1 to 16, default 5)",
+                        "default": 5,
+                    },
+                },
+                "required": ["location"],
+            },
+        },
+    },
 ]
 
 # Map tool names → async callables
 _TOOL_DISPATCH: dict = {
     "get_current_weather": get_current_weather,
+    "get_forecast": get_forecast,
 }
 
 # Maximum tool-calling rounds to prevent infinite loops
 _MAX_TOOL_ROUNDS = 5
 
+# Maximum conversation history messages retained per session
+_MAX_HISTORY_MESSAGES = 10
 
-async def chat(message: str, language: str = "en") -> ChatResponse:
-    """Process a user message through the LLM orchestrator.
+# In-memory session store fallback
+_IN_MEMORY_SESSIONS: dict[str, list[dict]] = {}
+
+
+async def _get_session_history(session_id: str) -> list[dict]:
+    """Retrieve recent conversation history for a session."""
+    # Try Redis first
+    cache_key = f"session:{session_id}"
+    history = await cache.get_json(cache_key)
+    if isinstance(history, list):
+        return history
+
+    # Fallback to in-memory store
+    return _IN_MEMORY_SESSIONS.get(session_id, [])
+
+
+async def _save_session_history(session_id: str, history: list[dict]) -> None:
+    """Save trimmed conversation history for a session."""
+    trimmed = history[-_MAX_HISTORY_MESSAGES:]
+    _IN_MEMORY_SESSIONS[session_id] = trimmed
+
+    # Also persist to Redis (TTL 2 hours)
+    cache_key = f"session:{session_id}"
+    await cache.set_json(cache_key, trimmed, ttl=7200)
+
+
+async def chat(
+    message: str,
+    language: str = "en",
+    session_id: Optional[str] = None,
+) -> ChatResponse:
+    """Process a user message through the LLM orchestrator with session support.
 
     Flow:
-        1. Send user message + system prompt + tool definitions to LLM
-        2. If LLM wants to call tools → execute them → feed results back
-        3. LLM phrases the final response in natural language
-        4. Return ChatResponse
+        1. Retrieve session history (if session_id provided or generated)
+        2. Construct prompt: SYSTEM_PROMPT + session history + new user message
+        3. Execute tool-calling loop (litellm acompletion)
+        4. Save user turn and assistant reply to session history
+        5. Return ChatResponse
 
     Args:
         message: The user's text message.
         language: ISO 639-1 language code.
+        session_id: Optional session identifier for multi-turn conversations.
 
     Returns:
-        ChatResponse with the LLM's natural-language reply.
+        ChatResponse with the LLM's natural-language reply and session_id.
     """
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": message},
-    ]
+    sid = session_id or str(uuid.uuid4())
+    history = await _get_session_history(sid)
+
+    # Build message list for LLM: system prompt + past conversation + new message
+    llm_messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    llm_messages.extend(history)
+    llm_messages.append({"role": "user", "content": message})
 
     sources: list[str] = []
 
     # --- Tool-calling loop ---
     for round_num in range(_MAX_TOOL_ROUNDS):
-        logger.debug("LLM call round %d, %d messages", round_num + 1, len(messages))
+        logger.debug("LLM call round %d, %d messages", round_num + 1, len(llm_messages))
 
         response = await litellm.acompletion(
             model=settings.LLM_MODEL,
-            messages=messages,
+            messages=llm_messages,
             tools=TOOLS,
             tool_choice="auto",
             api_key=settings.LLM_API_KEY,
@@ -136,8 +206,8 @@ async def chat(message: str, language: str = "en") -> ChatResponse:
         if not response_message.tool_calls:
             break
 
-        # Append the assistant's message (with tool_calls) to history
-        messages.append(response_message.model_dump())
+        # Append the assistant's message (with tool_calls) to loop history
+        llm_messages.append(response_message.model_dump())
 
         # Execute each tool call
         for tool_call in response_message.tool_calls:
@@ -159,8 +229,8 @@ async def chat(message: str, language: str = "en") -> ChatResponse:
                 result = json.dumps({"error": f"Unknown tool: {fn_name}"})
                 logger.warning("Unknown tool requested: %s", fn_name)
 
-            # Append tool result to conversation
-            messages.append({
+            # Append tool result to conversation loop
+            llm_messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
                 "content": result,
@@ -170,7 +240,7 @@ async def chat(message: str, language: str = "en") -> ChatResponse:
         logger.warning("Hit max tool rounds (%d), forcing final response", _MAX_TOOL_ROUNDS)
         response = await litellm.acompletion(
             model=settings.LLM_MODEL,
-            messages=messages,
+            messages=llm_messages,
             api_key=settings.LLM_API_KEY,
             temperature=0.3,
         )
@@ -178,13 +248,20 @@ async def chat(message: str, language: str = "en") -> ChatResponse:
 
     reply = response_message.content or "I'm sorry, I couldn't generate a response. Please try again."
 
+    # Update conversation history with user message and assistant reply
+    new_history = list(history)
+    new_history.append({"role": "user", "content": message})
+    new_history.append({"role": "assistant", "content": reply})
+    await _save_session_history(sid, new_history)
+
     # Deduplicate sources
     unique_sources = list(dict.fromkeys(sources))
 
-    logger.info("Chat complete: %d sources, reply length %d", len(unique_sources), len(reply))
+    logger.info("Chat complete: session=%s, %d sources, reply length %d", sid, len(unique_sources), len(reply))
 
     return ChatResponse(
         reply=reply,
         language=language,
+        session_id=sid,
         sources=unique_sources,
     )
