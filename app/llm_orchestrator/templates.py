@@ -13,7 +13,11 @@ Example:
 Templates are verifiable, instant, and never invent a number.
 """
 
-from app.schemas_and_models.schemas import ForecastPoint, ForecastTimeline
+from app.schemas_and_models.schemas import (
+    AlertListResponse,
+    ForecastPoint,
+    ForecastTimeline,
+)
 
 # ---------------------------------------------------------------------------
 # English templates
@@ -121,5 +125,46 @@ def format_forecast(timeline: ForecastTimeline, language: str = "en") -> str:
             rain_info=rain_info,
         )
         lines.append(line)
+
+    return "\n".join(lines)
+
+
+def format_alerts(alert_response: AlertListResponse, language: str = "en") -> str:
+    """Format active disaster / weather alerts into a clear bulleted warning string.
+
+    Args:
+        alert_response: AlertListResponse containing matching alerts.
+        language: ISO 639-1 language code ("en" or "hi").
+
+    Returns:
+        Formatted multi-line alert summary.
+    """
+    is_hi = language == "hi"
+    loc = alert_response.location_name
+
+    if alert_response.count == 0:
+        return (
+            f"{loc} के लिए कोई सक्रिय आपदा या गंभीर मौसम अलर्ट नहीं है।"
+            if is_hi
+            else f"No active disaster or severe weather alerts found for {loc}."
+        )
+
+    header = (
+        f"🚨 **{loc} के लिए सक्रिय आपदा एवं मौसम अलर्ट ({alert_response.count}) — NDMA SACHET / IMD:**"
+        if is_hi
+        else f"🚨 **Active Weather & Disaster Alerts for {loc} ({alert_response.count}) — NDMA SACHET / IMD:**"
+    )
+    lines = [header]
+
+    for alert in alert_response.alerts:
+        lines.append(f"\n• **[{alert.severity.upper()}] {alert.event}**")
+        if alert.headline:
+            lines.append(f"  - **Headline:** {alert.headline}")
+        if alert.description:
+            lines.append(f"  - **Details:** {alert.description}")
+        if alert.instruction:
+            lines.append(f"  - **Safety Advisory:** {alert.instruction}")
+        if alert.expires_at:
+            lines.append(f"  - **Valid until:** {alert.expires_at}")
 
     return "\n".join(lines)

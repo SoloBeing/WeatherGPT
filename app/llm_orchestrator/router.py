@@ -24,6 +24,7 @@ import litellm
 from app.config import settings
 from app.database.redis_cache import cache
 from app.schemas_and_models.schemas import ChatResponse
+from app.weather_tools.alerts_tool import get_alerts
 from app.weather_tools.current import get_current_weather
 from app.weather_tools.forecast import get_forecast
 
@@ -37,21 +38,24 @@ SYSTEM_PROMPT = """\
 You are WeatherGPT, a helpful and friendly weather assistant specialising in India.
 
 ## RULES — read these carefully:
-1. You NEVER make up, estimate, or recall weather data from memory.
-   Every weather number MUST come from a tool call.
+1. You NEVER make up, estimate, or recall weather data or disaster alerts from memory.
+   Every weather number and disaster alert MUST come from a tool call.
 2. When a user asks about current weather, call `get_current_weather`.
 3. When a user asks about upcoming weather, tomorrow, multi-day, 3-day, 5-day, 7-day,
    or weekend forecasts, call `get_forecast`.
-4. If a user refers to a location mentioned earlier in the conversation (e.g. "what about tomorrow?"),
+4. When a user asks about disaster alerts, warnings, cyclones, floods, heavy rain alerts,
+   heatwaves, thunderstorms, or emergencies, call `get_alerts`.
+5. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
    use that location in your tool call.
-5. After receiving tool results, present the data conversationally and clearly:
+6. After receiving tool results, present the data conversationally and clearly:
    - For multi-day forecasts: summarize each day with date/day, conditions, min-max temps, and rain probability.
-   - Always mention the data source (e.g. "According to Open-Meteo...").
-6. If a tool returns an error, tell the user honestly and suggest alternatives.
-7. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
-8. If the user speaks in Hindi or another Indian language, respond in that language while keeping
+   - For disaster alerts: highlight the severity level (Red/Extreme, Orange/Severe, Yellow/Moderate), affected areas, and safety instructions clearly.
+   - Always mention the data source (e.g. "According to NDMA SACHET / IMD..." or "According to Open-Meteo...").
+7. If a tool returns an error or no alerts found, inform the user honestly.
+8. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
+9. If the user speaks in Hindi or another Indian language, respond in that language while keeping
    numbers and units in standard form.
-9. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🌤️ ☀️ 🌧️ etc.).
+10. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ ☀️ 🌧️ etc.).
 """
 
 # ---------------------------------------------------------------------------
@@ -115,12 +119,42 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_alerts",
+            "description": (
+                "Get active disaster and weather alerts/warnings (e.g. cyclone, heavy rain, flood, "
+                "thunderstorm, lightning, heatwave, tsunami warnings) issued by NDMA SACHET or IMD "
+                "for a city, district, or state."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": (
+                            "City, district, or state name, e.g. 'Odisha', 'Mumbai', 'Kerala', "
+                            "'Assam', 'Delhi', 'Jaipur'."
+                        ),
+                    },
+                    "min_severity": {
+                        "type": "string",
+                        "enum": ["Minor", "Moderate", "Severe", "Extreme"],
+                        "description": "Optional minimum alert severity filter.",
+                    },
+                },
+                "required": ["location"],
+            },
+        },
+    },
 ]
 
 # Map tool names → async callables
 _TOOL_DISPATCH: dict = {
     "get_current_weather": get_current_weather,
     "get_forecast": get_forecast,
+    "get_alerts": get_alerts,
 }
 
 # Maximum tool-calling rounds to prevent infinite loops
@@ -224,7 +258,10 @@ async def chat(
             tool_fn = _TOOL_DISPATCH.get(fn_name)
             if tool_fn:
                 result = await tool_fn(**fn_args)
-                sources.append("open-meteo")
+                if fn_name == "get_alerts":
+                    sources.extend(["sachet-ndma", "imd"])
+                else:
+                    sources.append("open-meteo")
             else:
                 result = json.dumps({"error": f"Unknown tool: {fn_name}"})
                 logger.warning("Unknown tool requested: %s", fn_name)
