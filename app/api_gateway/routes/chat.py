@@ -5,3 +5,46 @@ Accepts text (or transcribed voice) → intent classifier → tool dispatch → 
 This is the main request path from the spec:
   Voice/text → Bhashini ASR → intent classifier → tool layer → big model phrasing → Bhashini TTS
 """
+
+import logging
+
+from fastapi import APIRouter, HTTPException
+
+from app.llm_orchestrator.router import chat
+from app.schemas_and_models.schemas import ChatRequest, ChatResponse
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+@router.post("", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest) -> ChatResponse:
+    """Process a conversational weather query.
+
+    Accepts a text message, routes it through the LLM orchestrator
+    (which calls weather tools as needed), and returns a natural
+    language response with real data.
+
+    Example:
+        POST /chat
+        {"message": "What's the weather in Delhi?"}
+
+        → {"reply": "Currently in Delhi: 34°C, partly cloudy...", ...}
+    """
+    logger.info("Chat request: '%s' (lang=%s)", request.message, request.language)
+
+    try:
+        response = await chat(
+            message=request.message,
+            language=request.language,
+        )
+    except Exception as e:
+        logger.exception("Chat processing failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process your request: {e}",
+        ) from e
+
+    logger.info("Chat response: %d chars, sources=%s", len(response.reply), response.sources)
+    return response

@@ -9,7 +9,28 @@ This is the main FastAPI application. It wires together:
 Run with: uvicorn app.main:app --reload
 """
 
+import logging
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api_gateway.routes.chat import router as chat_router
+from app.config import settings
+
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
 
 app = FastAPI(
     title="WeatherGPT",
@@ -17,7 +38,40 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# ---------------------------------------------------------------------------
+# Middleware
+# ---------------------------------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Tighten in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+app.include_router(chat_router)
+
 
 @app.get("/health")
 async def health_check():
+    """Health check endpoint."""
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Startup / Shutdown
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def startup():
+    logger.info("🚀 WeatherGPT starting up — model=%s", settings.LLM_MODEL)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    logger.info("🛑 WeatherGPT shutting down")

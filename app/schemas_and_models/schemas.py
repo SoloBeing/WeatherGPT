@@ -7,3 +7,77 @@ Core types:
   - AlertRecord: parsed CAP alert with geometry
   - LocationMatch: gazetteer fuzzy match result
 """
+
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class ForecastPoint(BaseModel):
+    """Universal output format from all data sources.
+
+    Every source — Open-Meteo, IMD, GFS, ECMWF, ERA5, WRF — normalises to
+    this object. Swapping sources is a config change, and you can cite
+    provenance in the answer ("per IMD, issued 08:30 IST").
+    """
+
+    source: str = Field(..., description="Data source identifier, e.g. 'open-meteo', 'imd'")
+    issued_at: datetime = Field(..., description="When the source produced this data")
+    valid_at: datetime = Field(..., description="What time the forecast/observation is for")
+    lat: float
+    lon: float
+    location_name: Optional[str] = None
+
+    # Core weather variables — all Optional since not every source provides everything
+    temperature_c: Optional[float] = Field(None, description="Temperature in °C")
+    feels_like_c: Optional[float] = Field(None, description="Apparent temperature in °C")
+    humidity_pct: Optional[float] = Field(None, description="Relative humidity in %")
+    wind_speed_kmh: Optional[float] = Field(None, description="Wind speed in km/h")
+    wind_direction_deg: Optional[float] = Field(None, description="Wind direction in degrees")
+    wind_gusts_kmh: Optional[float] = Field(None, description="Wind gusts in km/h")
+    pressure_hpa: Optional[float] = Field(None, description="Mean sea level pressure in hPa")
+    surface_pressure_hpa: Optional[float] = Field(None, description="Surface pressure in hPa")
+    cloud_cover_pct: Optional[float] = Field(None, description="Cloud cover in %")
+    precipitation_mm: Optional[float] = Field(None, description="Total precipitation in mm")
+    rain_mm: Optional[float] = Field(None, description="Rain in mm")
+    snowfall_cm: Optional[float] = Field(None, description="Snowfall in cm")
+    visibility_m: Optional[float] = Field(None, description="Visibility in metres")
+    uv_index: Optional[float] = Field(None, description="UV index")
+    weather_code: Optional[int] = Field(None, description="WMO weather code")
+    weather_description: Optional[str] = Field(None, description="Human-readable weather description")
+    is_day: Optional[bool] = Field(None, description="True if daytime at the location")
+
+
+class LocationMatch(BaseModel):
+    """Geocoding result from location resolution."""
+
+    name: str
+    lat: float
+    lon: float
+    country: Optional[str] = None
+    country_code: Optional[str] = None
+    admin1: Optional[str] = Field(None, description="State / province / region")
+    admin2: Optional[str] = Field(None, description="District / county")
+    elevation: Optional[float] = None
+    timezone: Optional[str] = None
+    population: Optional[int] = None
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class ChatRequest(BaseModel):
+    """Input to the /chat endpoint."""
+
+    message: str = Field(..., min_length=1, max_length=2000, description="User's weather query")
+    language: str = Field(default="en", description="ISO 639-1 language code")
+    session_id: Optional[str] = Field(None, description="Session ID for conversation continuity")
+
+
+class ChatResponse(BaseModel):
+    """Output from the /chat endpoint."""
+
+    reply: str = Field(..., description="Natural language response")
+    language: str = "en"
+    data: Optional[dict] = Field(None, description="Structured weather data, if any")
+    session_id: Optional[str] = None
+    sources: list[str] = Field(default_factory=list, description="Data sources cited")

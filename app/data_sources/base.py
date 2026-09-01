@@ -15,3 +15,37 @@ ForecastPoint includes:
 "Then swapping sources is a config change, and you can cite provenance
  in the answer ('per IMD, issued 08:30 IST'), which reads as rigour."
 """
+
+from abc import ABC, abstractmethod
+
+from app.schemas_and_models.schemas import ForecastPoint
+
+
+class BaseDataSource(ABC):
+    """Abstract base class for all weather data sources.
+
+    Every concrete data source must:
+    1. Set `source_name` to a unique identifier
+    2. Implement `fetch_current()` returning a ForecastPoint
+    3. Implement `close()` for resource cleanup
+    """
+
+    source_name: str = "unknown"
+
+    @abstractmethod
+    async def fetch_current(self, lat: float, lon: float) -> ForecastPoint:
+        """Fetch current weather conditions for a geographic point.
+
+        Args:
+            lat: Latitude (WGS84)
+            lon: Longitude (WGS84)
+
+        Returns:
+            ForecastPoint with current conditions populated.
+        """
+        ...
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Clean up resources (e.g. close httpx client)."""
+        ...
