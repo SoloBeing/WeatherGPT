@@ -115,6 +115,43 @@ class LocationMatch(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
+class AlertRecord(BaseModel):
+    """Parsed Common Alerting Protocol (CAP-XML) alert structure.
+
+    Matches NDMA SACHET and IMD official disaster/weather warning feeds.
+    """
+
+    alert_id: str = Field(..., description="Unique CAP alert identifier")
+    source: str = Field(default="sachet-ndma", description="Source of the alert, e.g. sachet-ndma, imd")
+    sender: str = Field(..., description="Agency issuing the alert, e.g. NDMA, IMD, SDMA")
+    sent_at: datetime = Field(..., description="Timestamp when the alert was published")
+    status: str = Field(default="Actual", description="Status: Actual, Exercise, Draft, Test")
+    msg_type: str = Field(default="Alert", description="Message type: Alert, Update, Cancel")
+    event: str = Field(..., description="Disaster/weather event name, e.g. Heavy Rain, Cyclone, Flood, Heat Wave")
+    urgency: str = Field(default="Expected", description="Urgency: Immediate, Expected, Future, Past, Unknown")
+    severity: str = Field(..., description="Severity level: Extreme (Red), Severe (Orange), Moderate (Yellow), Minor, Unknown")
+    certainty: str = Field(default="Likely", description="Certainty: Observed, Likely, Possible, Unlikely, Unknown")
+    headline: Optional[str] = Field(None, description="Brief summary headline")
+    description: Optional[str] = Field(None, description="Detailed hazard details")
+    instruction: Optional[str] = Field(None, description="Recommended protective actions for the public")
+    effective_at: Optional[datetime] = Field(None, description="Start of hazard window")
+    expires_at: Optional[datetime] = Field(None, description="End of hazard window")
+    area_desc: Optional[str] = Field(None, description="Affected districts / states description")
+    polygon: Optional[list[list[float]]] = Field(None, description="Boundary polygon [[lat, lon], ...]")
+    circle: Optional[str] = Field(None, description="Circle format 'lat,lon radius_km'")
+    language: str = Field(default="en", description="Alert text language code")
+
+
+class AlertListResponse(BaseModel):
+    """Response model for location alert lookup."""
+
+    location_name: str
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    count: int = 0
+    alerts: list[AlertRecord] = Field(default_factory=list, description="Active alerts matching location")
+
+
 class ChatRequest(BaseModel):
     """Input to the /chat endpoint."""
 
