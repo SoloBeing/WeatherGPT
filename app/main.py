@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api_gateway.routes.chat import router as chat_router
+from app.api_gateway.routes.voice import router as voice_router
 from app.api_gateway.routes.websocket import router as ws_router
 from app.config import settings
 
@@ -56,6 +57,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 app.include_router(chat_router)
+app.include_router(voice_router)
 app.include_router(ws_router)
 
 
