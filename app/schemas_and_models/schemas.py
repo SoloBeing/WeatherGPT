@@ -168,3 +168,17 @@ class ChatResponse(BaseModel):
     data: Optional[dict] = Field(None, description="Structured weather data, if any")
     session_id: Optional[str] = None
     sources: list[str] = Field(default_factory=list, description="Data sources cited")
+
+
+class VoiceChatResponse(BaseModel):
+    """Output from the /voice/chat endpoint.
+
+    Contains both the text transcript and optional synthesised audio.
+    """
+
+    transcript_in: str = Field(..., description="ASR transcript of user's speech input")
+    reply_text: str = Field(..., description="Weather response text in user's language")
+    reply_audio_base64: Optional[str] = Field(None, description="Base64-encoded WAV/MP3 audio of the reply")
+    language: str = Field(default="hi", description="ISO 639-1 language code of the response")
+    session_id: Optional[str] = None
+    sources: list[str] = Field(default_factory=list, description="Data sources cited")
