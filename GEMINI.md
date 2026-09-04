@@ -72,7 +72,7 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 - Logs live in `logs/XX-session/step-YY.md`
 - Each step records: what was done, exact bash commands, notable output
-- **Git commit at every step** (commit code + step log together) rather than at session end
+- **Write the step log AND git commit (code + step log together) BEFORE moving to the next step.** Never batch logs retroactively.
 - Session summary lives in `logs/XX-session/summary.md` (committed alongside final session state)
 
 ## Configuration

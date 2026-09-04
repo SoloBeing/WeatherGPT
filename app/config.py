@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # --- Bhashini (Voice + Translation) ---
     BHASHINI_API_KEY: str = ""
     BHASHINI_USER_ID: str = ""
+    BHASHINI_ULCA_CONFIG_URL: str = "https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline"
+    BHASHINI_PIPELINE_ID: str = "64392f96daac500b55c543cd"
+    BHASHINI_TTS_GENDER: str = "female"
+
+    # --- Fallback ASR (Groq Whisper) ---
+    GROQ_WHISPER_MODEL: str = "whisper-large-v3"
 
     # --- Firebase Cloud Messaging ---
     FCM_CREDENTIALS_PATH: str = ""

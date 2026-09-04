@@ -49,4 +49,8 @@ dependencies = [
 
     # --- Ingestion / Scheduling ---
     "apscheduler>=3.11.3",
+
+    # --- Voice / Multilingual ---
+    "python-multipart>=0.0.20",
+    "gtts>=2.5.4",
 ]
