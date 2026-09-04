@@ -18,6 +18,7 @@ from app.api_gateway.routes.chat import router as chat_router
 from app.api_gateway.routes.voice import router as voice_router
 from app.api_gateway.routes.websocket import router as ws_router
 from app.config import settings
+from app.ingestion_pipelines.scheduler import ingestion_scheduler
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -63,8 +64,18 @@ app.include_router(ws_router)
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint with subsystem status."""
+    from app.database import cache, check_db_health
+
+    db_healthy = await check_db_health()
+    redis_healthy = await cache.ping()
+
+    return {
+        "status": "ok",
+        "database": "connected" if db_healthy else "disconnected",
+        "redis": "connected" if redis_healthy else "disconnected",
+        "scheduler_running": ingestion_scheduler._is_running,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -74,8 +85,34 @@ async def health_check():
 @app.on_event("startup")
 async def startup():
     logger.info("🚀 WeatherGPT starting up — model=%s", settings.LLM_MODEL)
+    try:
+        ingestion_scheduler.start()
+    except Exception as exc:
+        logger.error(f"Failed to start ingestion scheduler: {exc}")
 
 
 @app.on_event("shutdown")
 async def shutdown():
     logger.info("🛑 WeatherGPT shutting down")
+    from app.database import cache, close_db
+    from app.ingestion_pipelines.sachet_poller import sachet_poller
+
+    try:
+        ingestion_scheduler.shutdown()
+    except Exception as exc:
+        logger.debug(f"Error shutting down scheduler: {exc}")
+
+    try:
+        await close_db()
+    except Exception as exc:
+        logger.debug(f"Error closing DB: {exc}")
+
+    try:
+        await cache.close()
+    except Exception as exc:
+        logger.debug(f"Error closing Redis: {exc}")
+
+    try:
+        await sachet_poller.close()
+    except Exception as exc:
+        logger.debug(f"Error closing SACHET poller: {exc}")
