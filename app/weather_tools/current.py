@@ -59,16 +59,28 @@ async def get_current_weather(location: str) -> str:
 
     logger.debug("Cache MISS for current weather at %s (%.4f, %.4f)", location_display, best.lat, best.lon)
 
-    # Step 3: Fetch current weather from Open-Meteo
-    client = OpenMeteoClient()
-    try:
-        point = await client.fetch_current(best.lat, best.lon)
-        point.location_name = location_display
-    except Exception as e:
-        logger.error("Weather fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
-        return json.dumps({"error": f"Weather data unavailable for {location}. {e}"})
-    finally:
-        await client.close()
+    # Step 3: Fetch current weather (GFS NWP Zarr primary for India, Open-Meteo fallback)
+    point = None
+    from app.data_sources.gfs import gfs_client
+
+    if gfs_client.has_data_for(best.lat, best.lon):
+        try:
+            logger.info("Extracting current weather from NOAA GFS 0.25° Zarr store for %s", location_display)
+            point = await gfs_client.fetch_current(best.lat, best.lon)
+            point.location_name = location_display
+        except Exception as e:
+            logger.warning("GFS Zarr extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
+
+    if point is None:
+        client = OpenMeteoClient()
+        try:
+            point = await client.fetch_current(best.lat, best.lon)
+            point.location_name = location_display
+        except Exception as e:
+            logger.error("Weather fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
+            return json.dumps({"error": f"Weather data unavailable for {location}. {e}"})
+        finally:
+            await client.close()
 
     logger.info(
         "Current weather for %s: %.1f°C, %s",

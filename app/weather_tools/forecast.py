@@ -63,16 +63,28 @@ async def get_forecast(location: str, days: int = 5, include_hourly: bool = Fals
 
     logger.debug("Cache MISS for forecast at %s (%.4f, %.4f, days=%d)", location_display, best.lat, best.lon, days)
 
-    # Step 3: Fetch forecast from Open-Meteo
-    client = OpenMeteoClient()
-    try:
-        timeline = await client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
-        timeline.location_name = location_display
-    except Exception as e:
-        logger.error("Forecast fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
-        return json.dumps({"error": f"Forecast data unavailable for {location}. {e}"})
-    finally:
-        await client.close()
+    # Step 3: Fetch forecast (GFS NWP Zarr primary for India, Open-Meteo fallback)
+    timeline = None
+    from app.data_sources.gfs import gfs_client
+
+    if gfs_client.has_data_for(best.lat, best.lon):
+        try:
+            logger.info("Extracting forecast from NOAA GFS 0.25° Zarr store for %s", location_display)
+            timeline = await gfs_client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
+            timeline.location_name = location_display
+        except Exception as e:
+            logger.warning("GFS Zarr forecast extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
+
+    if timeline is None:
+        client = OpenMeteoClient()
+        try:
+            timeline = await client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
+            timeline.location_name = location_display
+        except Exception as e:
+            logger.error("Forecast fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
+            return json.dumps({"error": f"Forecast data unavailable for {location}. {e}"})
+        finally:
+            await client.close()
 
     logger.info(
         "Forecast for %s: %d days retrieved",
