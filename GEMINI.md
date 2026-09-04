@@ -92,10 +92,12 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 ## Current State (updated each session)
 
-**Last session:** 04 (2026-09-01)  
+**Last session:** 05 (2026-09-04)  
 **What exists:**
 - ✅ **POST /chat** works end-to-end with Open-Meteo forecasts and SACHET/IMD active disaster alerts
-- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch` schemas
+- ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR → NMT → LLM → NMT → TTS → Audio
+- ✅ **GET /voice/languages** — returns 23 supported language codes
+- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch`, `VoiceChatResponse` schemas
 - ✅ Open-Meteo client (`fetch_current` + `fetch_forecast` with 15 daily & 8 hourly params)
 - ✅ SACHET CAP-XML Poller & active alert registry with spatial polygon and district/state matching
 - ✅ Location resolver (Open-Meteo geocoding + 36 Indian States/UTs Gazetteer)
@@ -103,24 +105,27 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 - ✅ Redis cache client (`database/redis_cache.py`) with fail-open fallback
 - ✅ WebSocket live alert streaming (`api_gateway/routes/websocket.py` on `/ws/alerts`)
 - ✅ FCM push notification service (`external_services/fcm.py`) with severity topic dispatch
+- ✅ Bhashini ULCA client (`external_services/bhashini.py`) — ASR, NMT, TTS with pipeline config caching
+- ✅ Groq Whisper ASR fallback + gTTS TTS fallback (graceful degradation)
 - ✅ LLM orchestrator (litellm tool-calling loop, multi-turn conversation session history)
-- ✅ Response templates (English + Hindi for current weather, forecasts, and disaster alerts)
-- ✅ FastAPI app with CORS, /chat route with `session_id`, /ws/alerts, /health check
+- ✅ Response templates — 6 languages: English, Hindi, Tamil, Telugu, Bengali, Marathi (verified native-script)
+- ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Next Session (05) — What To Build
+## Next Session (06) — What To Build
 
-Priority 3: **Bhashini voice (ASR + TTS) + Multilingual translation & speech synthesis**
+Priority 4: **GFS/Zarr ingestion pipeline + DB models + Alembic** (carries "real-time meteorological systems" score)
 
 ### Concrete tasks:
-1. **Bhashini API client** — `external_services/bhashini.py` (ULCA pipeline: ASR, NMT translation, TTS speech synthesis for 22 Indian languages)
-2. **Voice router** — Audio input upload / streaming endpoint in `api_gateway/routes/voice.py`
-3. **Multilingual voice-to-voice flow** — Audio in → Bhashini ASR (native script) → intent classifier → weather/alerts tool → verified template → Bhashini TTS → Audio out
-4. **IndicTrans2 / IndicConformer fallback** — Graceful fallback if Bhashini rate-limits
+1. **SQLAlchemy ORM models** — `schemas_and_models/orm.py` (weather observations table, forecast grids, alert history)
+2. **Alembic migrations** — init + first migration for PostGIS + TimescaleDB hypertables
+3. **GFS GRIB2 pipeline** — `ingestion_pipelines/gfs_pipeline.py` (herbie fetch → cfgrib decode → xarray → Zarr store)
+4. **APScheduler integration** — `ingestion_pipelines/scheduler.py` (periodic GFS fetch every 6h)
+5. **MinIO Zarr store** — write decoded GFS grids to MinIO as Zarr for fast slicing
 
-### Definition of done for Session 05:
-You can send speech input (voice query in Hindi/Tamil/Telugu/etc.) and receive natural synthesized speech output with real weather data.
+### Definition of done for Session 06:
+GFS 0.25° forecast grids are automatically fetched, decoded, and stored as Zarr in MinIO on a 6-hour schedule. DB tables exist with Alembic migrations.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -130,6 +135,6 @@ You can send speech input (voice query in Hindi/Tamil/Telugu/etc.) and receive n
 | 2 (Sep 01) | 02 | ✅ FastAPI + Open-Meteo + get_current + chat | P1: carries demo |
 | 3 (Sep 02) | 03 | ✅ get_forecast + Redis cache + multi-turn chat | P1: carries demo |
 | 4 (Sep 03) | 04 | ✅ SACHET alerts + FCM push + WebSocket | P2: carries demo |
-| 5 (Sep 04) | 05 | Bhashini voice (ASR + TTS) + multilingual templates | P3: carries demo |
+| 5 (Sep 04) | 05 | ✅ Bhashini voice (ASR + TTS) + multilingual templates | P3: carries demo |
 | 6 (Sep 05) | 06 | GFS/Zarr ingestion pipeline + DB models + Alembic | P4: meteorological score |
 | 7 (Sep 06) | 07 | Docker Compose, polish, demo prep, final tests | Ship |
