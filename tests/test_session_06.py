@@ -35,7 +35,13 @@ from app.schemas_and_models.db_models import (
     UserLocation,
 )
 from app.data_sources.gfs import gfs_client
-from app.ingestion_pipelines.gfs_pipeline import gfs_pipeline
+from app.ingestion_pipelines.gfs_pipeline import (
+    INDIA_LAT_MIN,
+    INDIA_LAT_MAX,
+    INDIA_LON_MIN,
+    INDIA_LON_MAX,
+    gfs_pipeline,
+)
 from app.ingestion_pipelines.scheduler import ingestion_scheduler
 from app.weather_tools.current import get_current_weather
 from app.weather_tools.forecast import get_forecast
@@ -58,9 +64,9 @@ def test_zarr_storage_roundtrip():
     """Verify xarray dataset saving and loading via zarr_storage."""
     today_12z = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     times = pd.date_range(today_12z, periods=2, freq="3h")
-    # Miniature 4x4 spatial grid spanning the India NWP bounding box (6°-38°N, 68°-98°E)
-    lats = np.linspace(6.0, 38.0, 4)
-    lons = np.linspace(68.0, 98.0, 4)
+    # Miniature 4x4 spatial grid spanning the India NWP bounding box
+    lats = np.linspace(INDIA_LAT_MIN, INDIA_LAT_MAX, 4)
+    lons = np.linspace(INDIA_LON_MIN, INDIA_LON_MAX, 4)
     ds = xr.Dataset(
         {"t2m": (["time", "latitude", "longitude"], np.zeros((2, 4, 4)))},
         coords={"time": times, "latitude": lats, "longitude": lons},
