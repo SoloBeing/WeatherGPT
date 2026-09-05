@@ -40,15 +40,14 @@ from app.main import app
 
 def test_orm_models_registered():
     """Verify all 5 tables are registered in Base.metadata with proper columns."""
-    tables = Base.metadata.tables
-    expected = ["forecast_cycles", "alerts", "user_locations", "gazetteer", "observations"]
-    for t in expected:
-        assert t in tables, f"Missing table: {t}"
+    models = [ForecastCycle, Alert, UserLocation, Gazetteer, Observation]
+    expected = {"forecast_cycles", "alerts", "user_locations", "gazetteer", "observations"}
+    assert {m.__tablename__ for m in models} == expected
 
     # Check PostGIS geometry columns
-    assert "geom" in tables["alerts"].columns
-    assert "geom" in tables["user_locations"].columns
-    assert "geom" in tables["gazetteer"].columns
+    assert "geom" in Alert.__table__.columns
+    assert "geom" in UserLocation.__table__.columns
+    assert "geom" in Gazetteer.__table__.columns
 
 
 def test_zarr_storage_roundtrip():
