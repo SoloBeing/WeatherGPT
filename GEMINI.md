@@ -70,10 +70,21 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 ## Session Log Convention
 
-- Logs live in `logs/XX-session/step-YY.md`
-- Each step records: what was done, exact bash commands, notable output
-- **Write the step log AND git commit (code + step log together) BEFORE moving to the next step.** Never batch logs retroactively.
-- Session summary lives in `logs/XX-session/summary.md` (committed alongside final session state)
+- Regular build sessions:
+  - Logs live in `logs/XX-session/step-YY.md`
+  - Each step records: what was done, exact bash commands, notable output
+  - **Write the step log AND git commit (code + step log together) BEFORE moving to the next step.** Never batch logs retroactively.
+  - Session summary lives in `logs/XX-session/summary.md` (committed alongside final session state)
+
+- Dev-Sessions (Cleaning, Refactoring, Auditing, Maintainability):
+  - Have a separate, more verbose log under `dev-logs/` (e.g. `dev-logs/XX-dev-session/summary.md`).
+  - No granular `step-YY.md` files during the auditing/fixing process.
+  - **Workflow:**
+    1. Flag everything first (walk through & catalog all items).
+    2. Systematically fix each flagged item one by one.
+    3. **Commit after EVERY individual fix** (e.g., 10 items flagged = 10 distinct, atomic commits for each respective item).
+    4. Write a comprehensive summary dev-log in `dev-logs/` after all fixes are completed at the end of the session.
+
 
 ## Configuration
 
