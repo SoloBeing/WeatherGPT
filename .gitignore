@@ -25,3 +25,7 @@ Thumbs.db
 # Data & Zarr stores
 data/
 *.zarr/
+
+# Secrets & Credentials
+*firebase*.json
+secrets/
