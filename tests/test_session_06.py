@@ -57,6 +57,7 @@ def test_orm_models_registered():
 def test_zarr_storage_roundtrip():
     """Verify xarray dataset saving and loading via zarr_storage."""
     times = pd.date_range("2026-09-04 12:00", periods=2, freq="3h")
+    # Miniature 4x4 spatial grid spanning the India NWP bounding box (6°-38°N, 68°-98°E)
     lats = np.linspace(6.0, 38.0, 4)
     lons = np.linspace(68.0, 98.0, 4)
     ds = xr.Dataset(
@@ -103,7 +104,7 @@ async def test_weather_tools_with_gfs():
     cur_data = json.loads(cur_json)
     assert "NOAA GFS" in cur_data.get("source", "")
 
-    fc_json = await get_forecast("Bengaluru", days=2)
+    fc_json = await get_forecast("Maharashtra", days=2)
     fc_data = json.loads(fc_json)
     assert "NOAA GFS" in fc_data.get("source", "")
 
