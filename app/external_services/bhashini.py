@@ -83,8 +83,8 @@ class BhashiniService:
 
         # Pipeline discovery cache
         self._inference_url: Optional[str] = None
-        self._inference_auth_key: Optional[str] = None
-        self._inference_auth_value: Optional[str] = None
+        self._inference_auth_key: Optional[str] = "Authorization" if settings.BHASHINI_INFERENCE_KEY else None
+        self._inference_auth_value: Optional[str] = settings.BHASHINI_INFERENCE_KEY or None
         self._service_ids: dict[str, str] = {}  # taskType → serviceId
         self._pipeline_cached_at: float = 0.0
 
@@ -110,7 +110,7 @@ class BhashiniService:
             "pipelineTasks": [
                 {"taskType": "asr", "config": {"language": {"sourceLanguage": "hi"}}},
                 {"taskType": "translation", "config": {"language": {"sourceLanguage": "hi", "targetLanguage": "en"}}},
-                {"taskType": "tts", "config": {"language": {"sourceLanguage": "hi"}}},
+                {"taskType": "tts", "config": {"language": {"sourceLanguage": "en"}}},
             ],
             "pipelineRequestConfig": {"pipelineId": self._pipeline_id},
         }
@@ -130,8 +130,8 @@ class BhashiniService:
         endpoint_info = data.get("pipelineInferenceAPIEndPoint", {})
         self._inference_url = endpoint_info.get("callbackUrl", "")
         auth_info = endpoint_info.get("inferenceApiKey", {})
-        self._inference_auth_key = auth_info.get("name", "Authorization")
-        self._inference_auth_value = auth_info.get("value", "")
+        self._inference_auth_key = auth_info.get("name", "Authorization") or "Authorization"
+        self._inference_auth_value = auth_info.get("value") or settings.BHASHINI_INFERENCE_KEY
 
         # Extract serviceIds for each task type
         for task_config in data.get("pipelineResponseConfig", []):
