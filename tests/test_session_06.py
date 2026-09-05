@@ -56,7 +56,8 @@ def test_orm_models_registered():
 
 def test_zarr_storage_roundtrip():
     """Verify xarray dataset saving and loading via zarr_storage."""
-    times = pd.date_range("2026-09-04 12:00", periods=2, freq="3h")
+    today_12z = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    times = pd.date_range(today_12z, periods=2, freq="3h")
     # Miniature 4x4 spatial grid spanning the India NWP bounding box (6°-38°N, 68°-98°E)
     lats = np.linspace(6.0, 38.0, 4)
     lons = np.linspace(68.0, 98.0, 4)
@@ -75,9 +76,9 @@ def test_zarr_storage_roundtrip():
 
 async def test_gfs_pipeline_and_reader():
     """Verify end-to-end pipeline run and GFS reader point extraction."""
-    now = datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+    cycle_dt = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     zarr_path, _ = await gfs_pipeline.run_pipeline(
-        cycle_dt=now,
+        cycle_dt=cycle_dt,
         steps=[0, 3],
         force_synthetic=True,
         use_db=False,
