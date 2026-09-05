@@ -5,11 +5,11 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-import geoalchemy2  # registers GeoAlchemy2 comparator
+import geoalchemy2  # noqa: F401 — registers GeoAlchemy2 comparator
 
 from app.config import settings
 from app.database.session import Base
-import app.schemas_and_models.db_models  # ensure all models are registered
+import app.schemas_and_models.db_models  # noqa: F401 — ensure all models are registered
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
