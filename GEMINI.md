@@ -103,7 +103,7 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 ## Current State (updated each session)
 
-**Last session:** 06 (2026-09-04)  
+**Last session:** 06 (2026-09-04) + Dev Session 01 (2026-09-05)  
 **What exists:**
 - ✅ **POST /chat** works end-to-end with Open-Meteo forecasts and SACHET/IMD active disaster alerts
 - ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR → NMT → LLM → NMT → TTS → Audio
@@ -127,21 +127,40 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 - ✅ LLM orchestrator (litellm tool-calling loop, multi-turn conversation session history)
 - ✅ Response templates — 6 languages: English, Hindi, Tamil, Telugu, Bengali, Marathi (verified native-script)
 - ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health with subsystem reporting
+- ✅ **Dev Session 01 (`tests/test_session_06.py`)** — Standardized on pytest + pytest-asyncio, decoupled weather tools test via `synthetic_gfs_cycle` fixture, eliminated dead imports and magic coordinates, resolved brittle geocoding and hardcoded dates.
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Next Session (07) — What To Build
+## Status: Holding Session 07 — Focusing on Dev Sessions (Refactoring, Maintainability & Scalability)
 
-Priority 5 & Final Polish: **Docker Compose, demo prep, K8s manifests, final integration tests** (Ship)
+Session 07 (Docker Compose, K8s manifests, final shipping) is held until further notice to prioritize polishing, refactoring, and strengthening the existing codebase.
 
-### Concrete tasks:
-1. **Docker Compose environment** — Multi-service composition (`fastapi`, `postgres-postgis-timescale`, `redis`, `minio`, `web-ui`) with healthchecks and volume bindings.
-2. **K8s scalability manifests** — Stateless deployment, Horizontal Pod Autoscaler (HPA), and ingress to claim horizontal scalability for judges.
-3. **WRF nested domain Zarr integration / mock** — district-level high-resolution data pre-load.
-4. **End-to-end demo script & prompt catalog** — English, Hindi, Tamil, Telugu, Bengali, Marathi multi-turn conversations and live disaster alert scenarios.
+### Upcoming Dev Sessions Focus:
 
-### Definition of done for Session 07:
-Entire stack runs with a single `docker compose up`, complete test suite passes, and demo scenarios execute seamlessly across text, voice, and alert push channels.
+1. **Dev Session 02: Fast & Clean Application Lifecycle (FastAPI Lifespan & Deprecations)**
+   - Replace deprecated `@app.on_event("startup")` and `@app.on_event("shutdown")` with modern async `lifespan` context manager.
+   - Clean shutdown handlers for background workers, schedulers, redis pools, and async HTTP clients.
+   - Silence third-party deprecation warnings (Starlette `TestClient` / `httpx2`, Zarr v3 consolidated metadata flag).
+
+2. **Dev Session 03: Architecture & Module Naming Polish**
+   - Execute planned verbose name shortening from development scaffold:
+     - `api_gateway/` → `api/`
+     - `llm_orchestrator/` → `core/`
+     - `weather_tools/` → `tools/`
+     - `schemas_and_models/` → `models/`
+     - `ingestion_pipelines/` → `pipelines/`
+     - `external_services/` → `services/`
+   - Update all import paths cleanly across `app/`, `tests/`, and `alembic/`.
+
+3. **Dev Session 04: Robustness & Data Source Fault Tolerance**
+   - Enhance resilience for GFS and Open-Meteo clients (exponential backoff, circuit breaking, typed exceptions).
+   - Ensure Zarr store index listing filters strictly for valid model cycles (`gfs_*`) to prevent uninitialized directory collisions.
+   - Add comprehensive mock fixtures in tests for offline test reproducibility across all test suites (Sessions 02–05).
+
+4. **Dev Session 05: Scalability & Performance Auditing**
+   - Optimize spatial point-slicing in `GFSClient` with persistent dataset handles or caching open stores.
+   - Validate TimescaleDB hypertable query plans and PostGIS spatial indexing (`gist(geom)`).
+   - Expand Redis precomputation strategies for top meteorological queries and alert lookups.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -153,5 +172,8 @@ Entire stack runs with a single `docker compose up`, complete test suite passes,
 | 4 (Sep 03) | 04 | ✅ SACHET alerts + FCM push + WebSocket | P2: carries demo |
 | 5 (Sep 04) | 05 | ✅ Bhashini voice (ASR + TTS) + multilingual templates | P3: carries demo |
 | 6 (Sep 05) | 06 | ✅ GFS/Zarr ingestion pipeline + DB models + Alembic | P4: meteorological score |
-| 7 (Sep 06) | 07 | Docker Compose, polish, demo prep, final tests | Ship |
+| — | **Dev-01** | ✅ Test Suite Polish (`test_session_06.py`), pytest runner, decoupling | Refactor |
+| — | **Dev-02+** | Codebase Polish: Lifespan, Directory Simplification, Fault Tolerance | Maintainability |
+| 7 (Sep 06) | 07 | *[On Hold]* Docker Compose, polish, demo prep, final tests | Ship |
+
 
