@@ -15,12 +15,16 @@ import asyncio
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import shutil
 import sys
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+from fastapi.testclient import TestClient
 
 # Ensure repository root is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from fastapi.testclient import TestClient
 
 from app.database import Base, zarr_storage
 from app.schemas_and_models.db_models import (
@@ -52,12 +56,6 @@ def test_orm_models_registered():
 
 def test_zarr_storage_roundtrip():
     """Verify xarray dataset saving and loading via zarr_storage."""
-    import numpy as np
-    import pandas as pd
-    import xarray as xr
-    import shutil
-    from pathlib import Path
-
     times = pd.date_range("2026-09-04 12:00", periods=2, freq="3h")
     lats = np.linspace(6.0, 38.0, 4)
     lons = np.linspace(68.0, 98.0, 4)
