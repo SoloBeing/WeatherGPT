@@ -62,7 +62,7 @@ def test_orm_models_registered():
 
 def test_zarr_storage_roundtrip():
     """Verify xarray dataset saving and loading via zarr_storage."""
-    today_12z = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    today_12z = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=None)
     times = pd.date_range(today_12z, periods=2, freq="3h")
     # Miniature 4x4 spatial grid spanning the India NWP bounding box
     lats = np.linspace(INDIA_LAT_MIN, INDIA_LAT_MAX, 4)
@@ -72,12 +72,13 @@ def test_zarr_storage_roundtrip():
         coords={"time": times, "latitude": lats, "longitude": lons},
     )
 
-    path = zarr_storage.save_dataset(ds, "test_roundtrip")
-    loaded = zarr_storage.open_dataset(path)
-    assert "t2m" in loaded.data_vars
-
-    # Cleanup
-    shutil.rmtree(Path("data/zarr_stores/gfs/test_roundtrip.zarr"), ignore_errors=True)
+    try:
+        path = zarr_storage.save_dataset(ds, "test_roundtrip")
+        loaded = zarr_storage.open_dataset(path)
+        assert "t2m" in loaded.data_vars
+    finally:
+        # Cleanup
+        shutil.rmtree(Path("data/zarr_stores/gfs/test_roundtrip.zarr"), ignore_errors=True)
 
 
 async def test_gfs_pipeline_and_reader():
