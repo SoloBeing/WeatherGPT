@@ -30,17 +30,25 @@ class RedisCache:
 
     def __init__(self, url: Optional[str] = None) -> None:
         self._url = url or settings.REDIS_URL
+        self._pool: Optional[aioredis.ConnectionPool] = None
         self._client: Optional[aioredis.Redis] = None
         self._warned_offline = False
 
+    def _get_pool(self) -> aioredis.ConnectionPool:
+        if self._pool is None:
+            self._pool = aioredis.ConnectionPool.from_url(
+                self._url,
+                max_connections=settings.REDIS_MAX_CONNECTIONS,
+                socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                socket_connect_timeout=settings.REDIS_SOCKET_CONNECT_TIMEOUT,
+                decode_responses=True,
+            )
+        return self._pool
+
     def _get_client(self) -> aioredis.Redis:
         if self._client is None:
-            self._client = aioredis.from_url(
-                self._url,
-                decode_responses=True,
-                socket_connect_timeout=1.0,
-                socket_timeout=1.0,
-            )
+            pool = self._get_pool()
+            self._client = aioredis.Redis(connection_pool=pool)
         return self._client
 
     async def ping(self) -> bool:
@@ -137,6 +145,40 @@ class RedisCache:
         key = self._make_point_key("weather:forecast", lat, lon, days)
         return await self.get(key)
 
+    async def mget(self, keys: list[str]) -> list[Optional[str]]:
+        """Get multiple string values in a single network round-trip."""
+        if not keys:
+            return []
+        try:
+            client = self._get_client()
+            return await client.mget(keys)
+        except (RedisError, ConnectionError, OSError) as e:
+            if not self._warned_offline:
+                logger.warning("Redis MGET failed: %s", e)
+                self._warned_offline = True
+            return [None] * len(keys)
+
+    async def set_many(self, items: list[tuple[str, str, int]]) -> bool:
+        """Set multiple key-value pairs with individual TTLs using a pipeline.
+
+        Args:
+            items: List of (key, value_str, ttl_seconds) tuples.
+        """
+        if not items:
+            return True
+        try:
+            client = self._get_client()
+            async with client.pipeline(transaction=False) as pipe:
+                for key, val, ttl in items:
+                    pipe.set(key, val, ex=ttl)
+                await pipe.execute()
+            return True
+        except (RedisError, ConnectionError, OSError) as e:
+            if not self._warned_offline:
+                logger.warning("Redis batch SET failed (%d items): %s", len(items), e)
+                self._warned_offline = True
+            return False
+
     async def set_forecast(
         self, lat: float, lon: float, days: int, data_json: str, ttl: int = DEFAULT_TTL
     ) -> bool:
@@ -144,11 +186,29 @@ class RedisCache:
         key = self._make_point_key("weather:forecast", lat, lon, days)
         return await self.set(key, data_json, ttl=ttl)
 
+    async def set_forecasts_batch(
+        self,
+        items: list[tuple[float, float, int, str, int]],
+    ) -> bool:
+        """Store multiple location forecasts in a single pipelined operation.
+
+        Args:
+            items: List of (lat, lon, days, data_json, ttl) tuples.
+        """
+        pipeline_items = [
+            (self._make_point_key("weather:forecast", lat, lon, days), data_json, ttl)
+            for lat, lon, days, data_json, ttl in items
+        ]
+        return await self.set_many(pipeline_items)
+
     async def close(self) -> None:
-        """Close underlying Redis connection pool."""
+        """Close underlying Redis client and connection pool."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        if self._pool is not None:
+            await self._pool.disconnect()
+            self._pool = None
 
 
 # Shared singleton instance
