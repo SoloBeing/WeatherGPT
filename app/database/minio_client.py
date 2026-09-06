@@ -229,6 +229,8 @@ class MinioZarrStorage:
             local_path = Path(store_path)
 
         if local_path is not None:
+            if not local_path.exists():
+                raise FileNotFoundError(f"Zarr store directory does not exist: {local_path}")
             if not is_valid_zarr_store(local_path):
                 raise CorruptedZarrStoreError(
                     f"Zarr store at '{local_path}' is corrupted, incomplete, or missing metadata."
