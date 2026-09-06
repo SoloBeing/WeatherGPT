@@ -24,6 +24,51 @@ logger = logging.getLogger(__name__)
 LOCAL_ZARR_BASE = Path("data/zarr_stores")
 
 
+class CorruptedZarrStoreError(Exception):
+    """Raised when a Zarr store directory is empty, corrupted, or missing metadata."""
+    pass
+
+
+def is_valid_zarr_store(path: Path | str) -> bool:
+    """Validate whether a given directory path is a well-formed, non-empty Zarr store.
+
+    Checks:
+    1. Path exists and is a directory.
+    2. Directory is non-empty.
+    3. Contains standard Zarr markers (zarr.json for v3, or .zgroup/.zmetadata/.zattrs for v2,
+       or variable subdirectories containing array metadata).
+    """
+    p = Path(path)
+    if not p.exists() or not p.is_dir():
+        return False
+
+    try:
+        entries = list(p.iterdir())
+    except OSError:
+        return False
+
+    if not entries:
+        return False
+
+    # Check for direct root metadata markers (Zarr v3 / v2)
+    valid_root_markers = {"zarr.json", ".zgroup", ".zmetadata", ".zattrs"}
+    entry_names = {e.name for e in entries}
+    if entry_names & valid_root_markers:
+        return True
+
+    # Check if any child subdirectory contains array metadata
+    for e in entries:
+        if e.is_dir():
+            try:
+                sub_names = {sub.name for sub in e.iterdir()}
+                if sub_names & {"zarr.json", ".zarray", ".zattrs"}:
+                    return True
+            except OSError:
+                continue
+
+    return False
+
+
 class MinioZarrStorage:
     """
     Object storage client for Zarr grids, supporting MinIO / S3
@@ -152,40 +197,65 @@ class MinioZarrStorage:
 
     def open_dataset(self, store_path: str) -> xr.Dataset:
         """
-        Open a Zarr store given its file path or s3 URI.
+        Open a Zarr store given its file path or s3 URI with corruption guardrails.
 
         Supports local paths as well as local fallbacks if an s3 URI is passed
         but MinIO is offline.
         """
+        local_path: Path | None = None
+
         if store_path.startswith("s3://"):
             parts = store_path.replace("s3://", "").split("/", 1)
             if len(parts) == 2:
                 _, rel_path = parts
                 local_fallback = LOCAL_ZARR_BASE / rel_path
                 if local_fallback.exists():
-                    return xr.open_zarr(local_fallback, consolidated=False)
-            # If MinIO is available and s3fs is present
-            if self.is_available():
+                    local_path = local_fallback
+
+            if local_path is None and self.is_available():
                 s3_endpoint = f"http://{self.endpoint}" if not self.secure else f"https://{self.endpoint}"
                 storage_options = {
                     "key": self.access_key,
                     "secret": self.secret_key,
                     "client_kwargs": {"endpoint_url": s3_endpoint},
                 }
-                return xr.open_zarr(store_path, storage_options=storage_options, consolidated=False)
+                try:
+                    return xr.open_zarr(store_path, storage_options=storage_options, consolidated=False)
+                except Exception as exc:
+                    raise CorruptedZarrStoreError(
+                        f"Failed to open remote Zarr store '{store_path}': {exc}"
+                    ) from exc
+        else:
+            local_path = Path(store_path)
 
-        return xr.open_zarr(store_path, consolidated=False)
+        if local_path is not None:
+            if not is_valid_zarr_store(local_path):
+                raise CorruptedZarrStoreError(
+                    f"Zarr store at '{local_path}' is corrupted, incomplete, or missing metadata."
+                )
+            try:
+                return xr.open_zarr(local_path, consolidated=False)
+            except Exception as exc:
+                raise CorruptedZarrStoreError(
+                    f"Failed to decode Zarr store at '{local_path}': {exc}"
+                ) from exc
 
-    def list_saved_cycles(self, subfolder: str = "gfs") -> list[str]:
-        """List all available stored cycle keys."""
+        raise FileNotFoundError(f"Zarr store not found or inaccessible: {store_path}")
+
+    def list_saved_cycles(self, subfolder: str = "gfs", validate: bool = True) -> list[str]:
+        """List all available stored cycle keys, optionally filtering corrupted stores."""
         folder = LOCAL_ZARR_BASE / subfolder
         if not folder.exists():
             return []
-        cycles = [
-            d.name.removesuffix(".zarr")
-            for d in folder.iterdir()
-            if d.is_dir() and d.name.endswith(".zarr")
-        ]
+
+        cycles: list[str] = []
+        for d in folder.iterdir():
+            if d.is_dir() and d.name.endswith(".zarr"):
+                if validate and not is_valid_zarr_store(d):
+                    logger.warning("Ignoring corrupted or incomplete Zarr directory: %s", d)
+                    continue
+                cycles.append(d.name.removesuffix(".zarr"))
+
         return sorted(cycles, reverse=True)
 
 

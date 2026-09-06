@@ -3,7 +3,12 @@ Database package.
 Exports async engine, sessionmaker, dependencies, cache clients, and Zarr storage.
 """
 
-from app.database.minio_client import MinioZarrStorage, zarr_storage
+from app.database.minio_client import (
+    CorruptedZarrStoreError,
+    MinioZarrStorage,
+    is_valid_zarr_store,
+    zarr_storage,
+)
 from app.database.redis_cache import (
     DEFAULT_TTL,
     RedisCache,
@@ -30,4 +35,6 @@ __all__ = [
     "DEFAULT_TTL",
     "MinioZarrStorage",
     "zarr_storage",
+    "is_valid_zarr_store",
+    "CorruptedZarrStoreError",
 ]
