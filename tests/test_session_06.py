@@ -73,11 +73,14 @@ def test_zarr_storage_roundtrip():
         coords={"time": times, "latitude": lats, "longitude": lons},
     )
 
+    loaded = None
     try:
         path = zarr_storage.save_dataset(ds, "test_roundtrip")
         loaded = zarr_storage.open_dataset(path)
         assert "t2m" in loaded.data_vars
     finally:
+        if loaded is not None:
+            loaded.close()
         # Cleanup
         shutil.rmtree(Path("data/zarr_stores/gfs/test_roundtrip.zarr"), ignore_errors=True)
 
