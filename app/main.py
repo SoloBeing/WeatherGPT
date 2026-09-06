@@ -9,6 +9,8 @@ This is the main FastAPI application. It wires together:
 Run with: uvicorn app.main:app --reload
 """
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
@@ -31,6 +33,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Lifespan Context Manager
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Modern async lifespan context manager managing startup and shutdown."""
+    logger.info("🚀 WeatherGPT starting up — model=%s", settings.LLM_MODEL)
+    try:
+        ingestion_scheduler.start()
+    except Exception as exc:
+        logger.error("Failed to start ingestion scheduler: %s", exc)
+
+    yield
+
+    logger.info("🛑 WeatherGPT shutting down")
+    from app.database import cache, close_db
+    from app.ingestion_pipelines.sachet_poller import sachet_poller
+
+    try:
+        ingestion_scheduler.shutdown()
+    except Exception as exc:
+        logger.debug("Error shutting down scheduler: %s", exc)
+
+    try:
+        await close_db()
+    except Exception as exc:
+        logger.debug("Error closing DB: %s", exc)
+
+    try:
+        await cache.close()
+    except Exception as exc:
+        logger.debug("Error closing Redis: %s", exc)
+
+    try:
+        await sachet_poller.close()
+    except Exception as exc:
+        logger.debug("Error closing SACHET poller: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -39,6 +82,7 @@ app = FastAPI(
     title="WeatherGPT",
     description="Conversational AI for Weather Forecasting, Alerts, and Climate Information",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------------
@@ -77,42 +121,3 @@ async def health_check():
         "scheduler_running": ingestion_scheduler._is_running,
     }
 
-
-# ---------------------------------------------------------------------------
-# Startup / Shutdown
-# ---------------------------------------------------------------------------
-
-@app.on_event("startup")
-async def startup():
-    logger.info("🚀 WeatherGPT starting up — model=%s", settings.LLM_MODEL)
-    try:
-        ingestion_scheduler.start()
-    except Exception as exc:
-        logger.error(f"Failed to start ingestion scheduler: {exc}")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    logger.info("🛑 WeatherGPT shutting down")
-    from app.database import cache, close_db
-    from app.ingestion_pipelines.sachet_poller import sachet_poller
-
-    try:
-        ingestion_scheduler.shutdown()
-    except Exception as exc:
-        logger.debug(f"Error shutting down scheduler: {exc}")
-
-    try:
-        await close_db()
-    except Exception as exc:
-        logger.debug(f"Error closing DB: {exc}")
-
-    try:
-        await cache.close()
-    except Exception as exc:
-        logger.debug(f"Error closing Redis: {exc}")
-
-    try:
-        await sachet_poller.close()
-    except Exception as exc:
-        logger.debug(f"Error closing SACHET poller: {exc}")
