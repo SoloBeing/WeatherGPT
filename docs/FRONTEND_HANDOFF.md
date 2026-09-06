@@ -1,6 +1,15 @@
 # WeatherGPT — Frontend Developer Handoff Guide 🌦️
 
-This guide contains everything you need to connect your frontend application (React, Next.js, Vue, Svelte, or vanilla JS/TS) to the **WeatherGPT** backend.
+Welcome to the **WeatherGPT** frontend integration guide! This reference is designed for frontend developers building user interfaces in React, Next.js, Vue, Svelte, or TypeScript.
+
+---
+
+## 📦 What's Prepared for You
+
+1. **Pre-Generated TypeScript Types:** [`docs/weathergpt-types.ts`](./weathergpt-types.ts) (copy-paste directly into `src/types/weather.ts`)
+2. **OpenAPI Specification:** [`docs/openapi.json`](./openapi.json) (compatible with Orval, RTK Query, or Swagger Editor)
+3. **Automated Verification Script:** `uv run python scripts/demo.py` (simulates all backend subsystems and prints sample responses)
+4. **CORS:** Enabled for all origins (`*`) — connect from any local frontend dev server (`localhost:3000`, `localhost:5173`, etc.)
 
 ---
 
@@ -9,33 +18,31 @@ This guide contains everything you need to connect your frontend application (Re
 ### Option A: Local Python with Astral `uv` (Fastest)
 
 ```bash
-# 1. Install/sync dependencies into virtualenv
+# 1. Install dependencies
 uv sync
 
-# 2. Configure environment (defaults work out of the box for testing)
+# 2. Configure environment
 cp .env.example .env
 
-# 3. Start API server on port 8000 with hot-reload
+# 3. Start API server on port 8000 (hot reload enabled)
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
 ### Option B: Docker Compose (Full Stack)
 
 ```bash
-# Starts PostgreSQL + PostGIS, Redis, MinIO, Migrations, Worker, and API
 docker compose up -d
 ```
 
-- **Base URL:** `http://localhost:8000`
+- **API Base URL:** `http://localhost:8000`
 - **Interactive Swagger Docs:** `http://localhost:8000/docs`
 - **Health Diagnostics:** `http://localhost:8000/health`
-- **Automated Verification Script:** `uv run python scripts/demo.py`
-
-> **Note on CORS:** CORS is enabled for all origins (`*`) by default, so your frontend can connect directly from `http://localhost:3000`, `http://localhost:5173`, etc.
 
 ---
 
-## 📡 2. Core API Contracts
+## 📡 2. API Endpoints & Request/Response Contracts
+
+---
 
 ### 2.1 Conversational Text Chat (`POST /chat`)
 
@@ -49,28 +56,99 @@ Sends a user text query and receives an intelligent, structured response backed 
 {
   "message": "Will it rain in Bengaluru tomorrow?",
   "language": "en",
-  "session_id": "optional-uuid-string"
+  "session_id": "123e4567-e89b-12d3-a456-426614174000"
 }
 ```
 
 - `message` (string, required): User's natural language weather or alert query.
 - `language` (string, optional, default `"en"`): ISO 639-1 language code (`"en"`, `"hi"`, `"ta"`, `"te"`, `"bn"`, `"mr"`, etc.).
-- `session_id` (string, optional): A unique ID (e.g. UUID stored in `localStorage`). Pass the same `session_id` across turns to maintain conversation context.
+- `session_id` (string, optional): Pass the same UUID stored in `localStorage` across turns to maintain multi-turn memory.
 
 #### Response Payload (`200 OK`):
 ```json
 {
-  "reply": "Currently in Bengaluru, it is 28.5°C with 58% humidity. Tomorrow expects light scattered rain with max temperatures around 29°C.",
+  "reply": "Currently in Bengaluru, it is 30.9°C with 58.9% humidity and wind around 20 km/h. Tomorrow expect light scattered rain.",
   "language": "en",
-  "data": null,
-  "session_id": "optional-uuid-string",
+  "data": {
+    "location_name": "Bengaluru, Karnataka, India",
+    "lat": 12.9716,
+    "lon": 77.5946,
+    "temperature_c": 30.9,
+    "feels_like_c": null,
+    "humidity_pct": 58.9,
+    "wind_speed_kmh": 20.0,
+    "condition": "Light rain",
+    "source": "NOAA GFS (0.25° NWP via Zarr - gfs_20260906_12z)"
+  },
+  "session_id": "123e4567-e89b-12d3-a456-426614174000",
   "sources": ["open-meteo", "gfs"]
 }
 ```
 
+> **UI Tip:** The `data` property contains the raw structured object returned by the weather tool. You can use it to render a temperature gauge or weather badge right below the chat message bubble!
+
 ---
 
-### 2.2 Voice-to-Voice Chat (`POST /voice/chat`)
+### 2.2 Direct Weather & Forecast REST Endpoints (Non-Chat)
+
+Use these to build dashboard widgets, graphs, and search bars without sending LLM chat turns.
+
+#### A. Current Weather (`GET /weather/current`)
+- **Query Params:** `location=Bengaluru` OR `lat=12.97&lon=77.59`
+- **Response:**
+```json
+{
+  "location_name": "Bengaluru, Bengaluru, India",
+  "lat": 12.9716,
+  "lon": 77.5946,
+  "temperature_c": 30.9,
+  "humidity_pct": 58.9,
+  "wind_speed_kmh": 20.0,
+  "condition": "Light rain",
+  "source": "NOAA GFS (0.25° NWP via Zarr - gfs_20260906_12z)"
+}
+```
+
+#### B. Multi-Day Forecast (`GET /weather/forecast`)
+- **Query Params:** `location=Delhi&days=5&include_hourly=false`
+- **Response:**
+```json
+{
+  "location_name": "Delhi, Delhi, India",
+  "lat": 28.61,
+  "lon": 77.2,
+  "daily": [
+    {
+      "date": "2026-09-06",
+      "temp_max_c": 25.1,
+      "temp_min_c": 23.9,
+      "precipitation_mm": 0.0,
+      "condition": "Partly cloudy"
+    }
+  ]
+}
+```
+
+#### C. City Search / Autocomplete (`GET /weather/locations`)
+- **Query Params:** `q=Mum&count=5`
+- **Response:**
+```json
+[
+  {
+    "name": "Mumbai",
+    "lat": 19.076,
+    "lon": 72.8777,
+    "country": "India",
+    "country_code": "IN",
+    "admin1": "Maharashtra",
+    "confidence": 1.0
+  }
+]
+```
+
+---
+
+### 2.3 Voice-to-Voice Chat (`POST /voice/chat`)
 
 Full audio pipeline: User Audio In (ASR) ➔ Tool Calling ➔ Synthesized Audio Out (TTS).
 
@@ -92,7 +170,7 @@ Full audio pipeline: User Audio In (ASR) ➔ Tool Calling ➔ Synthesized Audio 
   "reply_text": "मुंबई में कल: मध्यम वर्षा, तापमान 26°C से 30°C।",
   "reply_audio_base64": "UklGRi4AAABXQVZFZm10IBAAAAABAAEA...",
   "language": "hi",
-  "session_id": "optional-uuid-string",
+  "session_id": "123e4567-e89b-12d3-a456-426614174000",
   "sources": ["open-meteo"]
 }
 ```
@@ -107,13 +185,13 @@ if (response.reply_audio_base64) {
 
 ---
 
-### 2.3 Supported Voice Languages (`GET /voice/languages`)
+### 2.4 Supported Voice Languages (`GET /voice/languages`)
 
 Populates the language selector dropdown in the UI with 23 supported Indian languages and dialects.
 
 - **Endpoint:** `GET http://localhost:8000/voice/languages`
 
-#### Response Payload (`200 OK`):
+#### Response:
 ```json
 {
   "languages": [
@@ -138,67 +216,45 @@ Populates the language selector dropdown in the UI with 23 supported Indian lang
 
 ---
 
-### 2.4 Real-Time Disaster Alerts WebSocket (`WS /ws/alerts`)
+### 2.5 Real-Time Disaster Alerts & WebSocket
 
-Push notification channel for live NDMA SACHET / IMD CAP disaster alerts.
-
-- **WebSocket URL:** `ws://localhost:8000/ws/alerts`
-
-#### Incoming JSON Message:
+#### A. Direct Alert Lookup (`GET /alerts`)
+- **Query Params:** `location=Chennai` (or `lat=13.08&lon=80.27`)
+- **Response:**
 ```json
 {
-  "type": "weather_alert",
-  "timestamp": "2026-09-06T14:20:00.000Z",
-  "alert": {
-    "alert_id": "IN-MD-2026-0012",
-    "source": "sachet-ndma",
-    "sender": "IMD",
-    "event": "Heavy Rainfall",
-    "severity": "Severe",
-    "headline": "Severe rainfall warning for coastal districts",
-    "description": "Localized flooding and gusty winds likely in coastal areas.",
-    "instruction": "Avoid low-lying areas. Fishermen advised not to venture into sea.",
-    "area_desc": "Chennai, Kanchipuram, Tiruvallur"
-  }
+  "location_name": "Chennai, Tamil Nadu, India",
+  "lat": 13.0827,
+  "lon": 80.2707,
+  "count": 0,
+  "alerts": []
 }
 ```
 
-#### Frontend WebSocket Hook Example (React):
-```typescript
-import { useEffect, useState } from "react";
+#### B. Active Nationwide Alerts (`GET /alerts/active`)
+Returns all active NDMA SACHET and IMD disaster warnings currently monitored across India.
 
-export function useAlertWebSocket() {
-  const [activeAlert, setActiveAlert] = useState<any>(null);
+#### C. Live WebSocket Stream (`WS /ws/alerts`)
+Connect your app to `ws://localhost:8000/ws/alerts` to receive push events when severe weather or cyclone alerts are issued.
 
-  useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws/alerts");
+```javascript
+const ws = new WebSocket("ws://localhost:8000/ws/alerts");
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "weather_alert") {
-          setActiveAlert(data.alert);
-        }
-      } catch (err) {
-        console.error("Failed to parse alert websocket event", err);
-      }
-    };
-
-    ws.onerror = (err) => console.error("Alerts WS error:", err);
-    return () => ws.close();
-  }, []);
-
-  return activeAlert;
-}
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.type === "weather_alert") {
+    console.warn("🚨 Disaster Alert:", data.alert.headline);
+    // Display red emergency toast or alert banner
+  }
+};
 ```
 
 ---
 
-### 2.5 Health Check & Diagnostics (`GET /health`)
+### 2.6 Health Check & Diagnostics (`GET /health`)
 
 - **Endpoint:** `GET http://localhost:8000/health`
-
-#### Response:
+- **Response:**
 ```json
 {
   "status": "ok",
@@ -210,22 +266,21 @@ export function useAlertWebSocket() {
 
 ---
 
-## 🎨 3. Recommended Frontend UI Layout
+## 🎨 3. Recommended UI Components & Integration Flow
 
-1. **Top Bar:**
-   - App Logo & Title: **WeatherGPT 🌦️**
-   - Active Disaster Banner (hidden if no alerts; Red/Orange/Yellow toast if an alert arrives via WebSocket)
-   - Language Selector dropdown (populated via `GET /voice/languages`)
-   - Backend Connection status dot (green when `/health` returns `status: "ok"`)
+1. **Header Bar:**
+   - **Language Dropdown:** Populated dynamically via `GET /voice/languages` (defaults to `"en"` or `"hi"`).
+   - **Location Autocomplete Bar:** Debounced input calling `GET /weather/locations?q=...`.
+   - **Disaster Alert Toast:** Listens on `ws://localhost:8000/ws/alerts` or queries `GET /alerts?location=...`.
 
-2. **Chat Area:**
-   - Multi-turn conversation history
-   - Assistant bubbles showing weather responses with data provider badges (`Open-Meteo`, `NOAA GFS`, `NDMA SACHET`)
-   - Optional audio replay button for voice responses
+2. **Main Dashboard / Chat Area:**
+   - Text chat with message history.
+   - For every assistant reply, check if `response.data` is present:
+     - If it contains `temperature_c` and `condition`: Render a mini weather card with temperature, humidity, wind, and data source badge.
+     - If it contains `daily`: Render a multi-day forecast chart/cards.
 
-3. **Input Bar:**
-   - Text input field with send button
-   - **Voice Recording Button (Push-to-Talk):**
-     - Hold or click to record using Web `MediaRecorder` API
-     - Sends audio blob to `POST /voice/chat`
-     - Plays back returned base64 audio automatically
+3. **Push-to-Talk Voice Button:**
+   - Standard browser `navigator.mediaDevices.getUserMedia({ audio: true })`.
+   - Use `MediaRecorder` with `audio/webm` or `audio/wav`.
+   - Append to `FormData` and POST to `/voice/chat`.
+   - On response, automatically trigger audio playback if `reply_audio_base64` exists.

@@ -16,11 +16,14 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.alerts import router as alerts_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.voice import router as voice_router
+from app.api.routes.weather import router as weather_router
 from app.api.routes.websocket import router as ws_router
 from app.config import settings
 from app.pipelines.scheduler import ingestion_scheduler
+
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -129,6 +132,9 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(voice_router)
 app.include_router(ws_router)
+app.include_router(weather_router)
+app.include_router(alerts_router)
+
 
 
 @app.get("/health")

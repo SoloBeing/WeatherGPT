@@ -220,23 +220,22 @@ async def chat(
     llm_messages.append({"role": "user", "content": message})
 
     sources: list[str] = []
+    last_tool_data: Optional[dict] = None
 
     # --- Tool-calling loop ---
-    for round_num in range(_MAX_TOOL_ROUNDS):
-        logger.debug("LLM call round %d, %d messages", round_num + 1, len(llm_messages))
-
+    for _ in range(_MAX_TOOL_ROUNDS):
         response = await litellm.acompletion(
             model=settings.LLM_MODEL,
             messages=llm_messages,
             tools=TOOLS,
             tool_choice="auto",
             api_key=settings.LLM_API_KEY,
-            temperature=0.3,
+            temperature=0.2,
         )
 
         response_message = response.choices[0].message
 
-        # If no tool calls, we have the final answer
+        # If LLM didn't call a tool, we're done
         if not response_message.tool_calls:
             break
 
@@ -258,6 +257,13 @@ async def chat(
             tool_fn = _TOOL_DISPATCH.get(fn_name)
             if tool_fn:
                 result = await tool_fn(**fn_args)
+                try:
+                    parsed_res = json.loads(result)
+                    if isinstance(parsed_res, dict) and "error" not in parsed_res:
+                        last_tool_data = parsed_res
+                except Exception:
+                    pass
+
                 if fn_name == "get_alerts":
                     sources.extend(["sachet-ndma", "imd"])
                 else:
@@ -299,6 +305,8 @@ async def chat(
     return ChatResponse(
         reply=reply,
         language=language,
+        data=last_tool_data,
         session_id=sid,
         sources=unique_sources,
     )
+

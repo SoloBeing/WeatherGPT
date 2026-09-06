@@ -1,0 +1,1078 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WeatherGPT",
+    "description": "Conversational AI for Weather Forecasting, Alerts, and Climate Information",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/chat": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Chat Endpoint",
+        "description": "Process a conversational weather query.\n\nAccepts a text message, routes it through the LLM orchestrator\n(which calls weather tools as needed), and returns a natural\nlanguage response with real data.\n\nExample:\n    POST /chat\n    {\"message\": \"What's the weather in Delhi?\"}\n\n    \u2192 {\"reply\": \"Currently in Delhi: 34\u00b0C, partly cloudy...\", ...}",
+        "operationId": "chat_endpoint_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/chat": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Voice Chat Endpoint",
+        "description": "Process a voice weather query through the full ASR \u2192 LLM \u2192 TTS pipeline.\n\nAccepts an audio file upload with language metadata, transcribes it,\nroutes through the LLM orchestrator (which calls weather tools),\nand returns both text and synthesised audio response.\n\nExample:\n    POST /voice/chat\n    Content-Type: multipart/form-data\n    - audio: hindi_weather_query.wav\n    - language: hi\n\n    \u2192 {\"transcript_in\": \"\u0926\u093f\u0932\u094d\u0932\u0940 \u092e\u0947\u0902 \u092e\u094c\u0938\u092e \u0915\u0948\u0938\u093e \u0939\u0948?\",\n       \"reply_text\": \"\u0926\u093f\u0932\u094d\u0932\u0940 \u092e\u0947\u0902 \u0905\u092d\u0940: 34\u00b0C ...\",\n       \"reply_audio_base64\": \"UklGRi4A...\",\n       \"language\": \"hi\", ...}",
+        "operationId": "voice_chat_endpoint_voice_chat_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_voice_chat_endpoint_voice_chat_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/languages": {
+      "get": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "List Supported Languages",
+        "description": "Return the list of supported voice languages.",
+        "operationId": "list_supported_languages_voice_languages_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/weather/current": {
+      "get": {
+        "tags": [
+          "weather"
+        ],
+        "summary": "Get Current Weather Endpoint",
+        "description": "Retrieve structured current weather conditions for a named location or coordinates.",
+        "operationId": "get_current_weather_endpoint_weather_current_get",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City or place name (e.g. 'Mumbai', 'Delhi')",
+              "title": "Location"
+            },
+            "description": "City or place name (e.g. 'Mumbai', 'Delhi')"
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 90.0,
+                  "minimum": -90.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Latitude coordinate",
+              "title": "Lat"
+            },
+            "description": "Latitude coordinate"
+          },
+          {
+            "name": "lon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 180.0,
+                  "minimum": -180.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Longitude coordinate",
+              "title": "Lon"
+            },
+            "description": "Longitude coordinate"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Current Weather Endpoint Weather Current Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/weather/forecast": {
+      "get": {
+        "tags": [
+          "weather"
+        ],
+        "summary": "Get Forecast Endpoint",
+        "description": "Retrieve structured multi-day weather forecast timeline.",
+        "operationId": "get_forecast_endpoint_weather_forecast_get",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City or place name (e.g. 'Bengaluru')",
+              "title": "Location"
+            },
+            "description": "City or place name (e.g. 'Bengaluru')"
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 90.0,
+                  "minimum": -90.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Latitude coordinate",
+              "title": "Lat"
+            },
+            "description": "Latitude coordinate"
+          },
+          {
+            "name": "lon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 180.0,
+                  "minimum": -180.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Longitude coordinate",
+              "title": "Lon"
+            },
+            "description": "Longitude coordinate"
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 16,
+              "minimum": 1,
+              "description": "Forecast horizon in days (1-16)",
+              "default": 5,
+              "title": "Days"
+            },
+            "description": "Forecast horizon in days (1-16)"
+          },
+          {
+            "name": "include_hourly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include hourly forecast breakdown",
+              "default": false,
+              "title": "Include Hourly"
+            },
+            "description": "Include hourly forecast breakdown"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Forecast Endpoint Weather Forecast Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/weather/locations": {
+      "get": {
+        "tags": [
+          "weather"
+        ],
+        "summary": "Search Locations Endpoint",
+        "description": "Search and autocomplete locations across India with gazetteer and geocoding.",
+        "operationId": "search_locations_endpoint_weather_locations_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "description": "Search query for Indian cities, towns, or states",
+              "title": "Q"
+            },
+            "description": "Search query for Indian cities, towns, or states"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "description": "Maximum number of suggestions to return",
+              "default": 5,
+              "title": "Count"
+            },
+            "description": "Maximum number of suggestions to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LocationMatch"
+                  },
+                  "title": "Response Search Locations Endpoint Weather Locations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/alerts": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "Get Alerts Endpoint",
+        "description": "Retrieve active disaster and meteorological alerts for a specific area.",
+        "operationId": "get_alerts_endpoint_alerts_get",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City, district, or state name (e.g. 'Chennai', 'Odisha')",
+              "title": "Location"
+            },
+            "description": "City, district, or state name (e.g. 'Chennai', 'Odisha')"
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 90.0,
+                  "minimum": -90.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Latitude coordinate",
+              "title": "Lat"
+            },
+            "description": "Latitude coordinate"
+          },
+          {
+            "name": "lon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 180.0,
+                  "minimum": -180.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Longitude coordinate",
+              "title": "Lon"
+            },
+            "description": "Longitude coordinate"
+          },
+          {
+            "name": "min_severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum severity: 'Moderate', 'Severe', 'Extreme'",
+              "title": "Min Severity"
+            },
+            "description": "Minimum severity: 'Moderate', 'Severe', 'Extreme'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Alerts Endpoint Alerts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/alerts/active": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "List Active Alerts",
+        "description": "Retrieve all currently active NDMA SACHET and IMD disaster alerts nationwide.",
+        "operationId": "list_active_alerts_alerts_active_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlertRecord"
+                  },
+                  "type": "array",
+                  "title": "Response List Active Alerts Alerts Active Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint with subsystem status.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AlertRecord": {
+        "properties": {
+          "alert_id": {
+            "type": "string",
+            "title": "Alert Id",
+            "description": "Unique CAP alert identifier"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "Source of the alert, e.g. sachet-ndma, imd",
+            "default": "sachet-ndma"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender",
+            "description": "Agency issuing the alert, e.g. NDMA, IMD, SDMA"
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sent At",
+            "description": "Timestamp when the alert was published"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Status: Actual, Exercise, Draft, Test",
+            "default": "Actual"
+          },
+          "msg_type": {
+            "type": "string",
+            "title": "Msg Type",
+            "description": "Message type: Alert, Update, Cancel",
+            "default": "Alert"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event",
+            "description": "Disaster/weather event name, e.g. Heavy Rain, Cyclone, Flood, Heat Wave"
+          },
+          "urgency": {
+            "type": "string",
+            "title": "Urgency",
+            "description": "Urgency: Immediate, Expected, Future, Past, Unknown",
+            "default": "Expected"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "description": "Severity level: Extreme (Red), Severe (Orange), Moderate (Yellow), Minor, Unknown"
+          },
+          "certainty": {
+            "type": "string",
+            "title": "Certainty",
+            "description": "Certainty: Observed, Likely, Possible, Unlikely, Unknown",
+            "default": "Likely"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline",
+            "description": "Brief summary headline"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Detailed hazard details"
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction",
+            "description": "Recommended protective actions for the public"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At",
+            "description": "Start of hazard window"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "End of hazard window"
+          },
+          "area_desc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Desc",
+            "description": "Affected districts / states description"
+          },
+          "polygon": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Polygon",
+            "description": "Boundary polygon [[lat, lon], ...]"
+          },
+          "circle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circle",
+            "description": "Circle format 'lat,lon radius_km'"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "Alert text language code",
+            "default": "en"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alert_id",
+          "sender",
+          "sent_at",
+          "event",
+          "severity"
+        ],
+        "title": "AlertRecord",
+        "description": "Parsed Common Alerting Protocol (CAP-XML) alert structure.\n\nMatches NDMA SACHET and IMD official disaster/weather warning feeds."
+      },
+      "Body_voice_chat_endpoint_voice_chat_post": {
+        "properties": {
+          "audio": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Audio",
+            "description": "Audio file (WAV/MP3/FLAC, max 10MB)"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "ISO 639-1 source language code",
+            "default": "hi"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Session ID for conversation continuity"
+          },
+          "response_format": {
+            "type": "string",
+            "title": "Response Format",
+            "description": "'audio' for TTS response, 'text' for text-only",
+            "default": "audio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "audio"
+        ],
+        "title": "Body_voice_chat_endpoint_voice_chat_post"
+      },
+      "ChatRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "User's weather query"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "ISO 639-1 language code",
+            "default": "en"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Session ID for conversation continuity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatRequest",
+        "description": "Input to the /chat endpoint."
+      },
+      "ChatResponse": {
+        "properties": {
+          "reply": {
+            "type": "string",
+            "title": "Reply",
+            "description": "Natural language response"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "en"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "Structured weather data, if any"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "Data sources cited"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reply"
+        ],
+        "title": "ChatResponse",
+        "description": "Output from the /chat endpoint."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LocationMatch": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "admin1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin1",
+            "description": "State / province / region"
+          },
+          "admin2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin2",
+            "description": "District / county"
+          },
+          "elevation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevation"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "population": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Population"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 1.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "lat",
+          "lon"
+        ],
+        "title": "LocationMatch",
+        "description": "Geocoding result from location resolution."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VoiceChatResponse": {
+        "properties": {
+          "transcript_in": {
+            "type": "string",
+            "title": "Transcript In",
+            "description": "ASR transcript of user's speech input"
+          },
+          "reply_text": {
+            "type": "string",
+            "title": "Reply Text",
+            "description": "Weather response text in user's language"
+          },
+          "reply_audio_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Audio Base64",
+            "description": "Base64-encoded WAV/MP3 audio of the reply"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "ISO 639-1 language code of the response",
+            "default": "hi"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "Data sources cited"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transcript_in",
+          "reply_text"
+        ],
+        "title": "VoiceChatResponse",
+        "description": "Output from the /voice/chat endpoint.\n\nContains both the text transcript and optional synthesised audio."
+      }
+    }
+  }
+}
