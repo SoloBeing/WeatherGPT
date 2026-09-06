@@ -134,39 +134,40 @@ app/
 - ✅ **Dev Session 02 (`alembic/`)** — Migration infrastructure audit: protected side-effect registrations (`geoalchemy2` & `db_models`) with `# noqa: F401` against linter auto-stripping, condensed boilerplate template docstrings in `alembic/env.py`, and verified `script.py.mako` templating.
 - ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, wired clean shutdown handlers for HTTP clients (`BhashiniService`, `openmeteo_client`) and background pools, guarded audio uploads and Zarr dataset file handles with `try...finally`, enabled Zarr format 3 compliance (`consolidated=False`), and configured strict warning-free pytest filters (`error` default with third-party ignores).
 - ✅ **Dev Session 04 (`app/` production layout)** — Shortened development scaffolding module names to production hierarchy (`app/api/`, `app/core/`, `app/tools/`, `app/models/`, `app/pipelines/`, `app/services/`), migrated all imports across application, Alembic, and tests, aligned subpackage documentation, and verified 100% test pass rate with 0 warnings.
-- ✅ **Dev Session 05 (Robustness & Fault Tolerance)** — Implemented jittered exponential backoff and error classification (`app/core/resilience.py`), hardened Open-Meteo, Bhashini, and Location Resolver against transient network and rate-limit errors, added Zarr store integrity validation and GFS cycle failover (`app/database/minio_client.py`, `app/data_sources/gfs.py`), and established a 27-test offline test suite across services, storage, and data sources with 0 warnings under strict `-W error` enforcement.
+- ✅ **Dev Session 06 (Scalability & Performance Auditing)** — Enforced persistent connection pooling across asyncpg (`DB_POOL_SIZE=20`), Redis (`ConnectionPool`), and HTTP clients (`httpx.Limits`), eliminated cache-stampedes via `SingleFlight` request coalescing, vectorized Zarr spatial point extraction with dataset handle caching and 1D index slicing, pipelined grid cache warming, and created Alembic migration `0002_performance_and_spatial_indexes.py` with GIN trigram and composite query indexes, verified by a 35-test suite passing with 0 warnings.
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Dev Session 05 Summary (`dev-logs/05-dev-session/summary.md`)
+## Dev Session 06 Summary (`dev-logs/06-dev-session/summary.md`)
 
-- **Focus:** Resilient HTTP retry logic with jittered backoff, error classification, Zarr storage integrity checks with cycle failover, and comprehensive offline test mocking.
+- **Focus:** Concurrency & connection pooling, cache-stampede (dogpiling) protection, Zarr point extraction vectorization, Redis pipeline batching, GIN trigram indexes, and scalability testing.
 - **Commits:**
-  - `2eb5655`: `feat(core): implement resilient HTTP retry logic with jittered backoff and error classification`
-  - `9f058ef`: `refactor(data_sources): add jittered backoff retries and error classification to Open-Meteo client`
-  - `dc2b964`: `refactor(services): harden Bhashini service with resilient inference retries, 401 recovery, and backoff`
-  - `8b189af`: `refactor(tools): harden location resolver with geocoding retries and offline gazetteer fallback`
-  - `2e9f2d6`: `feat(database): implement Zarr store integrity validation and corruption guardrails`
-  - `ec071de`: `refactor(data_sources): add cycle failover and validation to GFS data source reader`
-  - `d056651`: `test(resilience): add offline mock fixtures and test suite for retries, Open-Meteo, and location resolver`
-  - `4767724`: `test(services): add offline test fixtures and unit tests for Bhashini and FCM`
-  - `81df5bb`: `test(storage): add unit tests for Zarr store validation, corruption guardrails, and GFS failover`
-- **Result:** 27/27 tests passing in ~14s with 0 warnings under strict `-W error` enforcement.
+  - `3e34365`: `feat(config): add database, redis, and http connection pool configuration parameters`
+  - `792b088`: `refactor(database): optimize async SQLAlchemy connection pool with configurable limits and recycling`
+  - `eb98dba`: `feat(database): implement Redis connection pool management, pipeline batching, and batch forecast writing`
+  - `441719b`: `refactor(http): optimize HTTP connection pooling, persistent client reuse, and openmeteo singleton`
+  - `3237dad`: `feat(core): implement SingleFlight request coalescing to prevent cache stampedes and dogpiling`
+  - `1ff4805`: `perf(gfs): optimize Zarr spatial point queries with dataset handle caching and fast 1D coordinate indexing`
+  - `e931d1c`: `perf(scheduler): vectorize spatial grid slicing and batch-warm Redis cache using pipelines`
+  - `172ef10`: `perf(tools): add in-memory location query caching and shared connection-pooled geocoder`
+  - `348dc94`: `feat(database): add GIN trigram indexes and composite spatial filter indexes with Alembic migration 0002`
+  - `ed07f33`: `test(scalability): add unit and concurrency test suite for connection pooling, batching, and single-flight`
+- **Result:** 35/35 tests passing in ~12s with 0 warnings under strict `-W error` enforcement.
 
-## What to Build Next: Dev Session 06 (Scalability & Performance Auditing)
+## What to Build Next: Session 07 (Containerization, Deployment & Final Shipping)
 
-Session 07 (Docker Compose, K8s manifests, final shipping) remains on hold to prioritize codebase refactoring and maintainability.
+With the codebase thoroughly audited, decoupled, hardened against network failures, and optimized for high-concurrency throughput across data pipelines, the project is ready for production packaging.
 
-### Dev Session 06 Scope:
-1. **Concurrency & Connection Pooling:**
-   - Optimize HTTP and asyncpg connection pools, max connections, and idle timeouts across services.
-   - Redis connection pool management and pipeline batching for spatial grid cache warming.
-2. **Spatial Query Performance:**
-   - Benchmark and optimize Zarr nearest-neighbor point queries and PostGIS geometry index utilization.
-   - Cache-stampede prevention (dogpiling protection) for popular location forecasts.
-3. **Verification & Testing Invariant:**
-   - Run `uv run pytest` after every single fix and commit atomically.
-   - Author comprehensive summary in `dev-logs/06-dev-session/summary.md`.
+### Session 07 Scope:
+1. **Docker Multi-Stage Build:**
+   - Production `Dockerfile` with multi-stage `uv` build for fast, lightweight images.
+   - Non-root user, proper file permissions, and lean runtime layer.
+2. **Docker Compose Orchestration:**
+   - `docker-compose.yml` defining FastAPI application, PostgreSQL (PostGIS + TimescaleDB), Redis, and MinIO object store with healthchecks.
+3. **Kubernetes Manifests:**
+   - K8s Deployments, Services, ConfigMaps, Secrets, and PersistentVolumeClaims for staging and production rollout.
+4. **End-to-End System Smoke Tests:**
+   - Final validation of all APIs, tools, WebSocket streaming, and scheduled background workers inside containerized environments.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -183,7 +184,7 @@ Session 07 (Docker Compose, K8s manifests, final shipping) remains on hold to pr
 | — | **Dev-03** | ✅ App Core & Lifespan Audit (`app/`, `try...finally`, warning hygiene) | Maintainability |
 | — | **Dev-04** | ✅ Architecture & Module Naming Polish (`api`, `core`, `tools`, `models`) | Maintainability |
 | — | **Dev-05** | ✅ Robustness & Fault Tolerance (Backoff, Retries, Offline) | Maintainability |
-| — | **Dev-06** | ⏳ Scalability & Performance Auditing (Pools, Batching, Caching) | Maintainability |
-| 7 (Sep 06) | 07 | *[On Hold]* Docker Compose, polish, demo prep, final tests | Ship |
+| — | **Dev-06** | ✅ Scalability & Performance Auditing (Pools, Batching, Caching) | Maintainability |
+| 7 (Sep 06) | 07 | ⏳ Docker Compose, K8s manifests, demo prep, final shipping | Ship |
 
 
