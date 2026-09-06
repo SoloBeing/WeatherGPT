@@ -1,0 +1,38 @@
+# Git and VCS
+.git/
+.gitignore
+
+# Python and Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Testing and Linters
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local Dev, Scratch, and Cache
+dev-logs/
+data/
+scratch/
+secrets/
+.env
+.env.local
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
