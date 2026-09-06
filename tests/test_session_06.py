@@ -110,19 +110,6 @@ async def test_gfs_pipeline_and_reader():
     assert len(timeline.hourly) == 2
 
 
-@pytest.fixture
-async def synthetic_gfs_cycle():
-    """Ensure a synthetic GFS cycle is available in local Zarr storage."""
-    cycle_dt = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
-    zarr_path, _ = await gfs_pipeline.run_pipeline(
-        cycle_dt=cycle_dt,
-        steps=[0, 3],
-        force_synthetic=True,
-        use_db=False,
-    )
-    return zarr_path
-
-
 async def test_weather_tools_with_gfs(synthetic_gfs_cycle):
     """Verify current and forecast tools extract from GFS Zarr store."""
     cur_json = await get_current_weather("Delhi")
