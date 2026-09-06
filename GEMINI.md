@@ -134,38 +134,39 @@ app/
 - ✅ **Dev Session 02 (`alembic/`)** — Migration infrastructure audit: protected side-effect registrations (`geoalchemy2` & `db_models`) with `# noqa: F401` against linter auto-stripping, condensed boilerplate template docstrings in `alembic/env.py`, and verified `script.py.mako` templating.
 - ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, wired clean shutdown handlers for HTTP clients (`BhashiniService`, `openmeteo_client`) and background pools, guarded audio uploads and Zarr dataset file handles with `try...finally`, enabled Zarr format 3 compliance (`consolidated=False`), and configured strict warning-free pytest filters (`error` default with third-party ignores).
 - ✅ **Dev Session 04 (`app/` production layout)** — Shortened development scaffolding module names to production hierarchy (`app/api/`, `app/core/`, `app/tools/`, `app/models/`, `app/pipelines/`, `app/services/`), migrated all imports across application, Alembic, and tests, aligned subpackage documentation, and verified 100% test pass rate with 0 warnings.
+- ✅ **Dev Session 05 (Robustness & Fault Tolerance)** — Implemented jittered exponential backoff and error classification (`app/core/resilience.py`), hardened Open-Meteo, Bhashini, and Location Resolver against transient network and rate-limit errors, added Zarr store integrity validation and GFS cycle failover (`app/database/minio_client.py`, `app/data_sources/gfs.py`), and established a 27-test offline test suite across services, storage, and data sources with 0 warnings under strict `-W error` enforcement.
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Dev Session 04 Summary (`dev-logs/04-dev-session/summary.md`)
+## Dev Session 05 Summary (`dev-logs/05-dev-session/summary.md`)
 
-- **Focus:** Shorten verbose scaffolding names to clean production package hierarchy (`api`, `core`, `tools`, `models`, `pipelines`, `services`), migrate all import paths, and update subpackage documentation.
+- **Focus:** Resilient HTTP retry logic with jittered backoff, error classification, Zarr storage integrity checks with cycle failover, and comprehensive offline test mocking.
 - **Commits:**
-  - `cb175a5`: `refactor(models): rename app/schemas_and_models to app/models and update imports`
-  - `f81fcd4`: `refactor(tools): rename app/weather_tools to app/tools and update imports`
-  - `b210af4`: `refactor(services): rename app/external_services to app/services and update imports`
-  - `8209dd1`: `refactor(pipelines): rename app/ingestion_pipelines to app/pipelines and update imports`
-  - `42f30ae`: `refactor(core): rename app/llm_orchestrator to app/core and update imports`
-  - `70a09fb`: `refactor(api): rename app/api_gateway to app/api and update imports`
-  - `9f46590`: `docs(modules): update subpackage GEMINI.md references to production layout`
-- **Result:** 6/6 tests passing with 0 warnings under strict `-W error` enforcement.
+  - `2eb5655`: `feat(core): implement resilient HTTP retry logic with jittered backoff and error classification`
+  - `9f058ef`: `refactor(data_sources): add jittered backoff retries and error classification to Open-Meteo client`
+  - `dc2b964`: `refactor(services): harden Bhashini service with resilient inference retries, 401 recovery, and backoff`
+  - `8b189af`: `refactor(tools): harden location resolver with geocoding retries and offline gazetteer fallback`
+  - `2e9f2d6`: `feat(database): implement Zarr store integrity validation and corruption guardrails`
+  - `ec071de`: `refactor(data_sources): add cycle failover and validation to GFS data source reader`
+  - `d056651`: `test(resilience): add offline mock fixtures and test suite for retries, Open-Meteo, and location resolver`
+  - `4767724`: `test(services): add offline test fixtures and unit tests for Bhashini and FCM`
+  - `81df5bb`: `test(storage): add unit tests for Zarr store validation, corruption guardrails, and GFS failover`
+- **Result:** 27/27 tests passing in ~14s with 0 warnings under strict `-W error` enforcement.
 
-## What to Build Next: Dev Session 05 (Robustness & Data Source Fault Tolerance)
+## What to Build Next: Dev Session 06 (Scalability & Performance Auditing)
 
 Session 07 (Docker Compose, K8s manifests, final shipping) remains on hold to prioritize codebase refactoring and maintainability.
 
-### Dev Session 05 Scope:
-1. **Exponential Backoff & Retries:**
-   - Implement resilient HTTP retry logic with jittered exponential backoff for Open-Meteo and Bhashini API calls.
-   - Robust error classification (network timeout vs HTTP 4xx/5xx vs rate limit).
-2. **Data Source Validation & Storage Hardening:**
-   - Zarr store directory validation and corruption guardrails (`gfs_*`).
-   - Graceful fallback paths when external data providers are degraded.
-3. **Offline Test Fixtures:**
-   - Mock fixtures for deterministic, offline testing of Open-Meteo, Bhashini, and FCM endpoints.
-4. **Verification & Testing Invariant:**
+### Dev Session 06 Scope:
+1. **Concurrency & Connection Pooling:**
+   - Optimize HTTP and asyncpg connection pools, max connections, and idle timeouts across services.
+   - Redis connection pool management and pipeline batching for spatial grid cache warming.
+2. **Spatial Query Performance:**
+   - Benchmark and optimize Zarr nearest-neighbor point queries and PostGIS geometry index utilization.
+   - Cache-stampede prevention (dogpiling protection) for popular location forecasts.
+3. **Verification & Testing Invariant:**
    - Run `uv run pytest` after every single fix and commit atomically.
-   - Author comprehensive summary in `dev-logs/05-dev-session/summary.md`.
+   - Author comprehensive summary in `dev-logs/06-dev-session/summary.md`.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -181,8 +182,8 @@ Session 07 (Docker Compose, K8s manifests, final shipping) remains on hold to pr
 | — | **Dev-02** | ✅ Alembic Migration Audit (`env.py`, F401 protection, docstrings) | Maintainability |
 | — | **Dev-03** | ✅ App Core & Lifespan Audit (`app/`, `try...finally`, warning hygiene) | Maintainability |
 | — | **Dev-04** | ✅ Architecture & Module Naming Polish (`api`, `core`, `tools`, `models`) | Maintainability |
-| — | **Dev-05** | ⏳ Robustness & Data Source Fault Tolerance (Backoff, Retries, Offline) | Maintainability |
-| — | **Dev-06+** | Scalability & Performance Auditing | Maintainability |
+| — | **Dev-05** | ✅ Robustness & Fault Tolerance (Backoff, Retries, Offline) | Maintainability |
+| — | **Dev-06** | ⏳ Scalability & Performance Auditing (Pools, Batching, Caching) | Maintainability |
 | 7 (Sep 06) | 07 | *[On Hold]* Docker Compose, polish, demo prep, final tests | Ship |
 
 
