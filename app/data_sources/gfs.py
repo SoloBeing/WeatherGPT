@@ -56,6 +56,26 @@ class GFSClient(BaseDataSource):
 
     source_name: str = "noaa-gfs-0.25"
 
+    def __init__(self) -> None:
+        self._cached_ds: Optional[xr.Dataset] = None
+        self._cached_cycle_key: Optional[str] = None
+        self._cached_lats: Optional[np.ndarray] = None
+        self._cached_lons: Optional[np.ndarray] = None
+        self._lat_dim: str = "latitude"
+        self._lon_dim: str = "longitude"
+
+    def invalidate_cache(self) -> None:
+        """Close and reset cached active dataset handle."""
+        if self._cached_ds is not None:
+            try:
+                self._cached_ds.close()
+            except Exception:
+                pass
+            self._cached_ds = None
+        self._cached_cycle_key = None
+        self._cached_lats = None
+        self._cached_lons = None
+
     def has_data_for(self, lat: float, lon: float) -> bool:
         """
         Check whether this coordinates point falls within India NWP domain
@@ -67,16 +87,32 @@ class GFSClient(BaseDataSource):
         return len(cycles) > 0
 
     def _get_active_dataset(self) -> tuple[xr.Dataset, str]:
-        """Open the most recent available valid GFS Zarr store, falling back to older cycles if needed."""
+        """Open or retrieve the cached most recent available valid GFS Zarr store."""
         cycles = zarr_storage.list_saved_cycles(validate=True)
         if not cycles:
+            self.invalidate_cache()
             raise FileNotFoundError("No GFS Zarr cycle datasets found in storage.")
+
+        latest_cycle = cycles[0]
+        if self._cached_ds is not None and self._cached_cycle_key == latest_cycle:
+            return self._cached_ds, self._cached_cycle_key
+
+        self.invalidate_cache()
 
         last_error: Exception | None = None
         for cycle_key in cycles:
             store_path = f"data/zarr_stores/gfs/{cycle_key}.zarr"
             try:
                 ds = zarr_storage.open_dataset(store_path)
+                self._cached_ds = ds
+                self._cached_cycle_key = cycle_key
+                lat_name = "latitude" if "latitude" in ds.coords else ("lat" if "lat" in ds.coords else None)
+                lon_name = "longitude" if "longitude" in ds.coords else ("lon" if "lon" in ds.coords else None)
+                if lat_name and lon_name:
+                    self._lat_dim = lat_name
+                    self._lon_dim = lon_name
+                    self._cached_lats = np.asarray(ds.coords[lat_name].values)
+                    self._cached_lons = np.asarray(ds.coords[lon_name].values)
                 return ds, cycle_key
             except Exception as exc:
                 logger.warning(
@@ -91,64 +127,69 @@ class GFSClient(BaseDataSource):
             f"All {len(cycles)} candidate GFS Zarr cycles failed to open. Last error: {last_error}"
         )
 
+    def _slice_nearest_point(self, ds: xr.Dataset, lat: float, lon: float) -> xr.Dataset:
+        """Extract nearest point using preloaded coordinate arrays and .isel() for microsecond latency."""
+        if self._cached_lats is not None and self._cached_lons is not None:
+            lat_idx = int(np.abs(self._cached_lats - lat).argmin())
+            lon_idx = int(np.abs(self._cached_lons - lon).argmin())
+            return ds.isel({self._lat_dim: lat_idx, self._lon_dim: lon_idx})
+        return ds.sel(latitude=lat, longitude=lon, method="nearest")
+
     async def fetch_current(self, lat: float, lon: float) -> ForecastPoint:
         """
         Extract nearest-neighbor current/initial conditions from the latest GFS Zarr cycle.
         """
         ds, cycle_key = self._get_active_dataset()
-        try:
-            # Nearest neighbor interpolation
-            pt = ds.sel(latitude=lat, longitude=lon, method="nearest")
+        # Fast nearest point indexing using preloaded coordinates and .isel()
+        pt = self._slice_nearest_point(ds, lat, lon)
 
-            # Step index 0 represents initial analysis / closest lead time
-            step_idx = 0
+        # Step index 0 represents initial analysis / closest lead time
+        step_idx = 0
 
-            temp_c = float(pt["temperature_c"].values[step_idx]) if "temperature_c" in pt else None
-            rh_pct = float(pt["r2"].values[step_idx]) if "r2" in pt else None
-            w_spd_ms = float(pt["wind_speed"].values[step_idx]) if "wind_speed" in pt else None
-            w_spd_kmh = round(w_spd_ms * 3.6, 1) if w_spd_ms is not None else None
-            w_dir_deg = float(pt["wind_direction"].values[step_idx]) if "wind_direction" in pt else None
-            press_hpa = float(pt["pressure_hpa"].values[step_idx]) if "pressure_hpa" in pt else None
-            precip_mm = float(pt["precip_rate_mmh"].values[step_idx]) if "precip_rate_mmh" in pt else 0.0
-            cloud_pct = float(pt["tcc"].values[step_idx]) if "tcc" in pt else 0.0
+        temp_c = float(pt["temperature_c"].values[step_idx]) if "temperature_c" in pt else None
+        rh_pct = float(pt["r2"].values[step_idx]) if "r2" in pt else None
+        w_spd_ms = float(pt["wind_speed"].values[step_idx]) if "wind_speed" in pt else None
+        w_spd_kmh = round(w_spd_ms * 3.6, 1) if w_spd_ms is not None else None
+        w_dir_deg = float(pt["wind_direction"].values[step_idx]) if "wind_direction" in pt else None
+        press_hpa = float(pt["pressure_hpa"].values[step_idx]) if "pressure_hpa" in pt else None
+        precip_mm = float(pt["precip_rate_mmh"].values[step_idx]) if "precip_rate_mmh" in pt else 0.0
+        cloud_pct = float(pt["tcc"].values[step_idx]) if "tcc" in pt else 0.0
 
-            wmo_code, weather_desc = _derive_weather_condition(precip_mm, cloud_pct)
+        wmo_code, weather_desc = _derive_weather_condition(precip_mm, cloud_pct)
 
-            # Issued / Valid timestamps
-            now = datetime.now(timezone.utc)
-            valid_at = now
-            if "valid_time" in pt:
-                try:
-                    vt_raw = pt["valid_time"].values[step_idx]
-                    valid_at = pd.to_datetime(vt_raw).to_pydatetime().replace(tzinfo=timezone.utc)
-                except Exception:
-                    pass
+        # Issued / Valid timestamps
+        now = datetime.now(timezone.utc)
+        valid_at = now
+        if "valid_time" in pt:
+            try:
+                vt_raw = pt["valid_time"].values[step_idx]
+                valid_at = pd.to_datetime(vt_raw).to_pydatetime().replace(tzinfo=timezone.utc)
+            except Exception:
+                pass
 
-            issued_at = now
-            if "time" in ds.coords:
-                try:
-                    issued_at = pd.to_datetime(ds.coords["time"].values).to_pydatetime().replace(tzinfo=timezone.utc)
-                except Exception:
-                    pass
+        issued_at = now
+        if "time" in ds.coords:
+            try:
+                issued_at = pd.to_datetime(ds.coords["time"].values).to_pydatetime().replace(tzinfo=timezone.utc)
+            except Exception:
+                pass
 
-            return ForecastPoint(
-                source=f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})",
-                issued_at=issued_at,
-                valid_at=valid_at,
-                lat=round(lat, 4),
-                lon=round(lon, 4),
-                temperature_c=round(temp_c, 1) if temp_c is not None else None,
-                humidity_pct=round(rh_pct, 1) if rh_pct is not None else None,
-                wind_speed_kmh=w_spd_kmh,
-                wind_direction_deg=round(w_dir_deg, 1) if w_dir_deg is not None else None,
-                pressure_hpa=round(press_hpa, 1) if press_hpa is not None else None,
-                precipitation_mm=round(precip_mm, 2),
-                cloud_cover_pct=round(cloud_pct, 1),
-                weather_code=wmo_code,
-                weather_description=weather_desc,
-            )
-        finally:
-            ds.close()
+        return ForecastPoint(
+            source=f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})",
+            issued_at=issued_at,
+            valid_at=valid_at,
+            lat=round(lat, 4),
+            lon=round(lon, 4),
+            temperature_c=round(temp_c, 1) if temp_c is not None else None,
+            humidity_pct=round(rh_pct, 1) if rh_pct is not None else None,
+            wind_speed_kmh=w_spd_kmh,
+            wind_direction_deg=round(w_dir_deg, 1) if w_dir_deg is not None else None,
+            pressure_hpa=round(press_hpa, 1) if press_hpa is not None else None,
+            precipitation_mm=round(precip_mm, 2),
+            cloud_cover_pct=round(cloud_pct, 1),
+            weather_code=wmo_code,
+            weather_description=weather_desc,
+        )
 
     async def fetch_forecast(
         self,
@@ -161,100 +202,97 @@ class GFSClient(BaseDataSource):
         Extract multi-day / lead-step forecast from GFS Zarr store.
         """
         ds, cycle_key = self._get_active_dataset()
-        try:
-            pt = ds.sel(latitude=lat, longitude=lon, method="nearest")
+        pt = self._slice_nearest_point(ds, lat, lon)
 
-            num_steps = pt.sizes.get("step", 1)
-            now = datetime.now(timezone.utc)
+        num_steps = pt.sizes.get("step", 1)
+        now = datetime.now(timezone.utc)
 
-            issued_at = now
-            if "time" in ds.coords:
-                try:
-                    issued_at = pd.to_datetime(ds.coords["time"].values).to_pydatetime().replace(tzinfo=timezone.utc)
-                except Exception:
-                    pass
+        issued_at = now
+        if "time" in ds.coords:
+            try:
+                issued_at = pd.to_datetime(ds.coords["time"].values).to_pydatetime().replace(tzinfo=timezone.utc)
+            except Exception:
+                pass
 
-            # Aggregate slices by date
-            daily_buckets: dict[dt_date, list[dict[str, float]]] = {}
-            hourly_slices: list[HourlyForecast] = []
+        # Aggregate slices by date
+        daily_buckets: dict[dt_date, list[dict[str, float]]] = {}
+        hourly_slices: list[HourlyForecast] = []
 
-            for i in range(num_steps):
-                try:
-                    step_valid = pd.to_datetime(pt["valid_time"].values[i]).to_pydatetime().replace(tzinfo=timezone.utc)
-                except Exception:
-                    step_valid = now
+        for i in range(num_steps):
+            try:
+                step_valid = pd.to_datetime(pt["valid_time"].values[i]).to_pydatetime().replace(tzinfo=timezone.utc)
+            except Exception:
+                step_valid = now
 
-                target_date = step_valid.date()
-                t_c = float(pt["temperature_c"].values[i]) if "temperature_c" in pt else 25.0
-                rh = float(pt["r2"].values[i]) if "r2" in pt else 60.0
-                w_ms = float(pt["wind_speed"].values[i]) if "wind_speed" in pt else 5.0
-                w_kmh = w_ms * 3.6
-                p_mm = float(pt["precip_rate_mmh"].values[i]) if "precip_rate_mmh" in pt else 0.0
-                c_pct = float(pt["tcc"].values[i]) if "tcc" in pt else 30.0
+            target_date = step_valid.date()
+            t_c = float(pt["temperature_c"].values[i]) if "temperature_c" in pt else 25.0
+            rh = float(pt["r2"].values[i]) if "r2" in pt else 60.0
+            w_ms = float(pt["wind_speed"].values[i]) if "wind_speed" in pt else 5.0
+            w_kmh = w_ms * 3.6
+            p_mm = float(pt["precip_rate_mmh"].values[i]) if "precip_rate_mmh" in pt else 0.0
+            c_pct = float(pt["tcc"].values[i]) if "tcc" in pt else 30.0
 
-                code, desc = _derive_weather_condition(p_mm, c_pct)
+            code, desc = _derive_weather_condition(p_mm, c_pct)
 
-                if target_date not in daily_buckets:
-                    daily_buckets[target_date] = []
+            if target_date not in daily_buckets:
+                daily_buckets[target_date] = []
 
-                daily_buckets[target_date].append({
-                    "temp": t_c,
-                    "humidity": rh,
-                    "wind": w_kmh,
-                    "precip": p_mm,
-                    "cloud": c_pct,
-                    "code": code,
-                    "desc": desc,
-                })
+            daily_buckets[target_date].append({
+                "temp": t_c,
+                "humidity": rh,
+                "wind": w_kmh,
+                "precip": p_mm,
+                "cloud": c_pct,
+                "code": code,
+                "desc": desc,
+            })
 
-                if include_hourly:
-                    hourly_slices.append(
-                        HourlyForecast(
-                            valid_at=step_valid,
-                            temperature_c=round(t_c, 1),
-                            humidity_pct=round(rh, 1),
-                            precipitation_mm=round(p_mm, 2),
-                            wind_speed_kmh=round(w_kmh, 1),
-                            weather_code=code,
-                            weather_description=desc,
-                        )
-                    )
-
-            # Build DailyForecast list
-            daily_forecasts: list[DailyForecast] = []
-            for d, items in list(daily_buckets.items())[:days]:
-                temps = [x["temp"] for x in items]
-                winds = [x["wind"] for x in items]
-                precips = [x["precip"] for x in items]
-                dom_code = items[0]["code"]
-                dom_desc = items[0]["desc"]
-
-                daily_forecasts.append(
-                    DailyForecast(
-                        date=d,
-                        temp_max_c=round(max(temps), 1),
-                        temp_min_c=round(min(temps), 1),
-                        precipitation_sum_mm=round(sum(precips), 2),
-                        wind_speed_max_kmh=round(max(winds), 1),
-                        weather_code=dom_code,
-                        weather_description=dom_desc,
+            if include_hourly:
+                hourly_slices.append(
+                    HourlyForecast(
+                        valid_at=step_valid,
+                        temperature_c=round(t_c, 1),
+                        humidity_pct=round(rh, 1),
+                        precipitation_mm=round(p_mm, 2),
+                        wind_speed_kmh=round(w_kmh, 1),
+                        weather_code=code,
+                        weather_description=desc,
                     )
                 )
 
-            return ForecastTimeline(
-                source=f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})",
-                issued_at=issued_at,
-                lat=round(lat, 4),
-                lon=round(lon, 4),
-                daily=daily_forecasts,
-                hourly=hourly_slices if include_hourly else None,
+        # Build DailyForecast list
+        daily_forecasts: list[DailyForecast] = []
+        for d, items in list(daily_buckets.items())[:days]:
+            temps = [x["temp"] for x in items]
+            winds = [x["wind"] for x in items]
+            precips = [x["precip"] for x in items]
+            dom_code = items[0]["code"]
+            dom_desc = items[0]["desc"]
+
+            daily_forecasts.append(
+                DailyForecast(
+                    date=d,
+                    temp_max_c=round(max(temps), 1),
+                    temp_min_c=round(min(temps), 1),
+                    precipitation_sum_mm=round(sum(precips), 2),
+                    wind_speed_max_kmh=round(max(winds), 1),
+                    weather_code=dom_code,
+                    weather_description=dom_desc,
+                )
             )
-        finally:
-            ds.close()
+
+        return ForecastTimeline(
+            source=f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})",
+            issued_at=issued_at,
+            lat=round(lat, 4),
+            lon=round(lon, 4),
+            daily=daily_forecasts,
+            hourly=hourly_slices if include_hourly else None,
+        )
 
     async def close(self) -> None:
         """Clean up resources if any."""
-        pass
+        self.invalidate_cache()
 
 
 # Shared singleton instance

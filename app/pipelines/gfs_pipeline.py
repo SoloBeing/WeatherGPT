@@ -361,6 +361,10 @@ class GFSIngestionPipeline:
         zarr_path = zarr_storage.save_dataset(ds, cycle_key=cycle_key, subfolder="gfs")
         logger.info(f"GFS cycle {cycle_key} persisted to Zarr at {zarr_path}")
 
+        # Invalidate active reader cache so newest cycle is immediately picked up
+        from app.data_sources.gfs import gfs_client
+        gfs_client.invalidate_cache()
+
         # Compute validity range and stats
         valid_start = cycle_dt
         valid_end = cycle_dt + timedelta(hours=max(steps))

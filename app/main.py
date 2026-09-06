@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("🛑 WeatherGPT shutting down")
+    from app.data_sources.gfs import gfs_client
     from app.data_sources.openmeteo import openmeteo_client
     from app.database import cache, close_db
     from app.services.bhashini import bhashini_service
@@ -84,6 +85,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await bhashini_service.close()
     except Exception as exc:
         logger.debug("Error closing Bhashini service: %s", exc)
+
+    try:
+        await gfs_client.close()
+    except Exception as exc:
+        logger.debug("Error closing GFS client: %s", exc)
 
 
 # ---------------------------------------------------------------------------
