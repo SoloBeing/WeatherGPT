@@ -24,6 +24,7 @@ from typing import Optional
 import httpx
 
 from app.config import settings
+from app.core.resilience import classify_http_error, retry_async
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +123,23 @@ class BhashiniService:
         }
 
         logger.info("Discovering Bhashini pipeline config...")
-        resp = await self._client.post(self._config_url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+
+        async def _call_discover():
+            resp = await self._client.post(self._config_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
+        try:
+            data = await retry_async(
+                _call_discover,
+                max_retries=2,
+                base_delay=0.4,
+                max_delay=2.5,
+                operation_name="Bhashini pipeline discovery",
+            )
+        except Exception as exc:
+            logger.error("Bhashini pipeline discovery failed: %s", classify_http_error(exc))
+            raise BhashiniError(f"Failed to discover Bhashini pipeline: {classify_http_error(exc)}") from exc
 
         # Extract inference endpoint + auth
         endpoint_info = data.get("pipelineInferenceAPIEndPoint", {})
@@ -164,6 +179,30 @@ class BhashiniService:
             "Content-Type": "application/json",
             self._inference_auth_key or "Authorization": self._inference_auth_value or "",
         }
+
+    async def _post_inference(self, payload: dict, task_name: str) -> dict:
+        """Execute Bhashini inference request with 401 token refresh and jittered backoff retries."""
+        async def _call():
+            headers = self._inference_headers()
+            resp = await self._client.post(self._inference_url, json=payload, headers=headers)
+
+            # Retry once on 401 (expired inference token)
+            if resp.status_code == 401:
+                logger.warning("Bhashini %s received 401 Unauthorized — rediscovering pipeline...", task_name)
+                await self._discover_pipeline()
+                headers = self._inference_headers()
+                resp = await self._client.post(self._inference_url, json=payload, headers=headers)
+
+            resp.raise_for_status()
+            return resp.json()
+
+        return await retry_async(
+            _call,
+            max_retries=2,
+            base_delay=0.4,
+            max_delay=2.5,
+            operation_name=f"Bhashini {task_name}",
+        )
 
     # ------------------------------------------------------------------
     # ASR — Speech to Text
@@ -217,21 +256,7 @@ class BhashiniService:
         }
 
         try:
-            resp = await self._client.post(
-                self._inference_url, json=payload, headers=self._inference_headers()
-            )
-
-            # Retry once on 401 (expired inference token)
-            if resp.status_code == 401:
-                logger.warning("Bhashini ASR got 401 — rediscovering pipeline...")
-                await self._discover_pipeline()
-                resp = await self._client.post(
-                    self._inference_url, json=payload, headers=self._inference_headers()
-                )
-
-            resp.raise_for_status()
-            data = resp.json()
-
+            data = await self._post_inference(payload, task_name=f"ASR ({source_lang})")
             transcript = (
                 data.get("pipelineResponse", [{}])[0]
                 .get("output", [{}])[0]
@@ -318,20 +343,7 @@ class BhashiniService:
         }
 
         try:
-            resp = await self._client.post(
-                self._inference_url, json=payload, headers=self._inference_headers()
-            )
-
-            if resp.status_code == 401:
-                logger.warning("Bhashini NMT got 401 — rediscovering pipeline...")
-                await self._discover_pipeline()
-                resp = await self._client.post(
-                    self._inference_url, json=payload, headers=self._inference_headers()
-                )
-
-            resp.raise_for_status()
-            data = resp.json()
-
+            data = await self._post_inference(payload, task_name=f"NMT ({source_lang}->{target_lang})")
             translated = (
                 data.get("pipelineResponse", [{}])[0]
                 .get("output", [{}])[0]
@@ -393,20 +405,7 @@ class BhashiniService:
         }
 
         try:
-            resp = await self._client.post(
-                self._inference_url, json=payload, headers=self._inference_headers()
-            )
-
-            if resp.status_code == 401:
-                logger.warning("Bhashini TTS got 401 — rediscovering pipeline...")
-                await self._discover_pipeline()
-                resp = await self._client.post(
-                    self._inference_url, json=payload, headers=self._inference_headers()
-                )
-
-            resp.raise_for_status()
-            data = resp.json()
-
+            data = await self._post_inference(payload, task_name=f"TTS ({target_lang})")
             audio_b64 = (
                 data.get("pipelineResponse", [{}])[0]
                 .get("audio", [{}])[0]
