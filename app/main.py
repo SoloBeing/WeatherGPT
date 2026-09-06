@@ -86,6 +86,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.debug("Error closing Bhashini service: %s", exc)
 
+    from app.tools.location_resolver import close_geocoder
+
+    try:
+        await close_geocoder()
+    except Exception as exc:
+        logger.debug("Error closing geocoder client: %s", exc)
+
     try:
         await gfs_client.close()
     except Exception as exc:

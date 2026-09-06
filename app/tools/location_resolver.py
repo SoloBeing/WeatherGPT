@@ -14,16 +14,56 @@ geocoder. The pg_trgm gazetteer is planned for Session 03.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
+from app.config import settings
 from app.core.resilience import classify_http_error, retry_async
 from app.models.schemas import LocationMatch
 
 logger = logging.getLogger(__name__)
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+
+_geocoder_client: Optional[httpx.AsyncClient] = None
+_client_cls: Any = None
+_LOCATION_CACHE: dict[str, list[LocationMatch]] = {}
+_MAX_CACHE_ENTRIES = 1024
+
+
+def get_geocoder_client() -> httpx.AsyncClient:
+    """Get or create the persistent, connection-pooled geocoder HTTP client."""
+    global _geocoder_client, _client_cls
+    current_cls = httpx.AsyncClient
+    if _geocoder_client is None or _geocoder_client.is_closed or _client_cls != current_cls:
+        limits = httpx.Limits(
+            max_connections=settings.HTTP_MAX_CONNECTIONS,
+            max_keepalive_connections=settings.HTTP_MAX_KEEPALIVE_CONNECTIONS,
+            keepalive_expiry=settings.HTTP_KEEPALIVE_EXPIRY,
+        )
+        timeout = httpx.Timeout(settings.HTTP_TIMEOUT, connect=5.0)
+        _geocoder_client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+            headers={"User-Agent": "WeatherGPT/0.1"},
+        )
+        _client_cls = current_cls
+    return _geocoder_client
+
+
+async def close_geocoder() -> None:
+    """Close the geocoder HTTP client and reset state."""
+    global _geocoder_client, _client_cls
+    if _geocoder_client is not None:
+        await _geocoder_client.aclose()
+        _geocoder_client = None
+        _client_cls = None
+
+
+def clear_location_cache() -> None:
+    """Clear in-memory location resolution cache."""
+    _LOCATION_CACHE.clear()
 
 # Common Indian States, Union Territories, and Major Cities gazetteer
 INDIAN_STATES_GAZETTEER: dict[str, tuple[float, float, str]] = {
@@ -117,12 +157,17 @@ async def resolve_location(
         Empty list if no matches found.
     """
     clean_name = name.strip().lower()
+    cache_key = f"{clean_name}:{count}:{country_code or ''}"
+
+    if cache_key in _LOCATION_CACHE:
+        logger.debug("Location cache HIT for '%s'", name)
+        return _LOCATION_CACHE[cache_key]
 
     # Check Indian states gazetteer table first
     if clean_name in INDIAN_STATES_GAZETTEER:
         lat, lon, state_name = INDIAN_STATES_GAZETTEER[clean_name]
         logger.info("Gazetteer hit for Indian state: %s (%.2f, %.2f)", state_name, lat, lon)
-        return [
+        res = [
             LocationMatch(
                 name=state_name,
                 lat=lat,
@@ -133,6 +178,8 @@ async def resolve_location(
                 confidence=1.0,
             )
         ]
+        _LOCATION_CACHE[cache_key] = res
+        return res
     params: dict = {
         "name": name,
         "count": count,
@@ -143,10 +190,10 @@ async def resolve_location(
         params["country_code"] = country_code
 
     async def _fetch_geocoding() -> dict:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(GEOCODING_URL, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        client = get_geocoder_client()
+        resp = await client.get(GEOCODING_URL, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     try:
         data = await retry_async(
@@ -212,4 +259,10 @@ async def resolve_location(
         "Resolved '%s' → %d matches (best: %s, %s)",
         name, len(matches), matches[0].name, matches[0].country,
     )
+
+    if matches:
+        if len(_LOCATION_CACHE) >= _MAX_CACHE_ENTRIES:
+            _LOCATION_CACHE.clear()
+        _LOCATION_CACHE[cache_key] = matches
+
     return matches
