@@ -13,6 +13,7 @@ import json
 import logging
 from typing import Any
 
+import numpy as np
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -66,13 +67,25 @@ async def precompute_top_towns(zarr_path: str | None = None) -> int:
         return 0
 
     try:
-        warmed_count = 0
+        warmed_batch: list[tuple[float, float, int, str, int]] = []
+
+        lat_name = "latitude" if "latitude" in ds.coords else ("lat" if "lat" in ds.coords else None)
+        lon_name = "longitude" if "longitude" in ds.coords else ("lon" if "lon" in ds.coords else None)
+        lats = np.asarray(ds.coords[lat_name].values) if lat_name else None
+        lons = np.asarray(ds.coords[lon_name].values) if lon_name else None
+
         for town in KEY_INDIAN_TOWNS:
             try:
                 lat = town["lat"]
                 lon = town["lon"]
-                # Slicing nearest point
-                point = ds.sel(latitude=lat, longitude=lon, method="nearest")
+
+                # Fast 1D nearest index slicing
+                if lats is not None and lons is not None and lat_name and lon_name:
+                    lat_idx = int(np.abs(lats - lat).argmin())
+                    lon_idx = int(np.abs(lons - lon).argmin())
+                    point = ds.isel({lat_name: lat_idx, lon_name: lon_idx})
+                else:
+                    point = ds.sel(latitude=lat, longitude=lon, method="nearest")
 
                 lead_steps = []
                 num_steps = point.sizes.get("step", 1)
@@ -103,14 +116,16 @@ async def precompute_top_towns(zarr_path: str | None = None) -> int:
                     "forecasts": lead_steps,
                 }
 
-                # Warm Redis cache with 6h TTL
-                await cache.set_forecast(lat, lon, days=3, data_json=json.dumps(forecast_payload), ttl=21600)
-                warmed_count += 1
+                warmed_batch.append((lat, lon, 3, json.dumps(forecast_payload), 21600))
             except Exception as exc:
                 logger.debug(f"Failed precomputing town {town['name']}: {exc}")
 
-        logger.info(f"Successfully warmed cache for {warmed_count}/{len(KEY_INDIAN_TOWNS)} key towns.")
-        return warmed_count
+        if warmed_batch:
+            # Atomic pipelined write of all town forecasts to Redis
+            await cache.set_forecasts_batch(warmed_batch)
+
+        logger.info(f"Successfully warmed cache for {len(warmed_batch)}/{len(KEY_INDIAN_TOWNS)} key towns.")
+        return len(warmed_batch)
     finally:
         ds.close()
 
