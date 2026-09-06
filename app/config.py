@@ -22,9 +22,22 @@ class Settings(BaseSettings):
 
     # --- Database (PostGIS + TimescaleDB) ---
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/weathergpt"
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: float = 30.0
+    DB_POOL_RECYCLE: int = 1800
 
     # --- Redis Cache ---
     REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_MAX_CONNECTIONS: int = 50
+    REDIS_SOCKET_TIMEOUT: float = 2.0
+    REDIS_SOCKET_CONNECT_TIMEOUT: float = 2.0
+
+    # --- HTTP Client Connection Pools ---
+    HTTP_MAX_CONNECTIONS: int = 100
+    HTTP_MAX_KEEPALIVE_CONNECTIONS: int = 20
+    HTTP_KEEPALIVE_EXPIRY: float = 30.0
+    HTTP_TIMEOUT: float = 10.0
 
     # --- Object Store (MinIO / S3) ---
     MINIO_ENDPOINT: str = "localhost:9000"
