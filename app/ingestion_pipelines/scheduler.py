@@ -65,51 +65,54 @@ async def precompute_top_towns(zarr_path: str | None = None) -> int:
         logger.warning(f"Could not open Zarr store for precomputation: {exc}")
         return 0
 
-    warmed_count = 0
-    for town in KEY_INDIAN_TOWNS:
-        try:
-            lat = town["lat"]
-            lon = town["lon"]
-            # Slicing nearest point
-            point = ds.sel(latitude=lat, longitude=lon, method="nearest")
+    try:
+        warmed_count = 0
+        for town in KEY_INDIAN_TOWNS:
+            try:
+                lat = town["lat"]
+                lon = town["lon"]
+                # Slicing nearest point
+                point = ds.sel(latitude=lat, longitude=lon, method="nearest")
 
-            lead_steps = []
-            num_steps = point.sizes.get("step", 1)
-            for i in range(num_steps):
-                temp_c = float(point["temperature_c"].values[i]) if "temperature_c" in point else 25.0
-                rh = float(point["r2"].values[i]) if "r2" in point else 60.0
-                w_spd = float(point["wind_speed"].values[i]) if "wind_speed" in point else 5.0
-                w_dir = float(point["wind_direction"].values[i]) if "wind_direction" in point else 0.0
-                press = float(point["pressure_hpa"].values[i]) if "pressure_hpa" in point else 1010.0
-                precip = float(point["precip_rate_mmh"].values[i]) if "precip_rate_mmh" in point else 0.0
+                lead_steps = []
+                num_steps = point.sizes.get("step", 1)
+                for i in range(num_steps):
+                    temp_c = float(point["temperature_c"].values[i]) if "temperature_c" in point else 25.0
+                    rh = float(point["r2"].values[i]) if "r2" in point else 60.0
+                    w_spd = float(point["wind_speed"].values[i]) if "wind_speed" in point else 5.0
+                    w_dir = float(point["wind_direction"].values[i]) if "wind_direction" in point else 0.0
+                    press = float(point["pressure_hpa"].values[i]) if "pressure_hpa" in point else 1010.0
+                    precip = float(point["precip_rate_mmh"].values[i]) if "precip_rate_mmh" in point else 0.0
 
-                lead_steps.append({
-                    "step_index": i,
-                    "temperature_c": round(temp_c, 1),
-                    "humidity_percent": round(rh, 1),
-                    "wind_speed_ms": round(w_spd, 1),
-                    "wind_direction_deg": round(w_dir, 1),
-                    "pressure_hpa": round(press, 1),
-                    "precipitation_mmh": round(precip, 2),
-                })
+                    lead_steps.append({
+                        "step_index": i,
+                        "temperature_c": round(temp_c, 1),
+                        "humidity_percent": round(rh, 1),
+                        "wind_speed_ms": round(w_spd, 1),
+                        "wind_direction_deg": round(w_dir, 1),
+                        "pressure_hpa": round(press, 1),
+                        "precipitation_mmh": round(precip, 2),
+                    })
 
-            forecast_payload = {
-                "source": "NOAA GFS (0.25° NWP via Zarr)",
-                "location": town["name"],
-                "latitude": lat,
-                "longitude": lon,
-                "cached_at": datetime.now(timezone.utc).isoformat(),
-                "forecasts": lead_steps,
-            }
+                forecast_payload = {
+                    "source": "NOAA GFS (0.25° NWP via Zarr)",
+                    "location": town["name"],
+                    "latitude": lat,
+                    "longitude": lon,
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                    "forecasts": lead_steps,
+                }
 
-            # Warm Redis cache with 6h TTL
-            await cache.set_forecast(lat, lon, days=3, data_json=json.dumps(forecast_payload), ttl=21600)
-            warmed_count += 1
-        except Exception as exc:
-            logger.debug(f"Failed precomputing town {town['name']}: {exc}")
+                # Warm Redis cache with 6h TTL
+                await cache.set_forecast(lat, lon, days=3, data_json=json.dumps(forecast_payload), ttl=21600)
+                warmed_count += 1
+            except Exception as exc:
+                logger.debug(f"Failed precomputing town {town['name']}: {exc}")
 
-    logger.info(f"Successfully warmed cache for {warmed_count}/{len(KEY_INDIAN_TOWNS)} key towns.")
-    return warmed_count
+        logger.info(f"Successfully warmed cache for {warmed_count}/{len(KEY_INDIAN_TOWNS)} key towns.")
+        return warmed_count
+    finally:
+        ds.close()
 
 
 async def job_gfs_ingestion() -> None:
