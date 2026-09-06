@@ -44,8 +44,8 @@ from app.ingestion_pipelines.gfs_pipeline import (
     gfs_pipeline,
 )
 from app.ingestion_pipelines.scheduler import ingestion_scheduler
-from app.weather_tools.current import get_current_weather
-from app.weather_tools.forecast import get_forecast
+from app.tools.current import get_current_weather
+from app.tools.forecast import get_forecast
 from app.main import app
 
 

@@ -24,9 +24,9 @@ import litellm
 from app.config import settings
 from app.database.redis_cache import cache
 from app.models.schemas import ChatResponse
-from app.weather_tools.alerts_tool import get_alerts
-from app.weather_tools.current import get_current_weather
-from app.weather_tools.forecast import get_forecast
+from app.tools.alerts_tool import get_alerts
+from app.tools.current import get_current_weather
+from app.tools.forecast import get_forecast
 
 logger = logging.getLogger(__name__)
 

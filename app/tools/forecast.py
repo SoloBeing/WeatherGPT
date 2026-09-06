@@ -10,7 +10,7 @@ import logging
 
 from app.database.redis_cache import cache
 from app.data_sources.openmeteo import OpenMeteoClient
-from app.weather_tools.location_resolver import resolve_location
+from app.tools.location_resolver import resolve_location
 
 logger = logging.getLogger(__name__)
 

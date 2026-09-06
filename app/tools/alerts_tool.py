@@ -11,7 +11,7 @@ from typing import Optional
 
 from app.ingestion_pipelines.sachet_poller import sachet_poller
 from app.models.schemas import AlertListResponse
-from app.weather_tools.location_resolver import resolve_location
+from app.tools.location_resolver import resolve_location
 
 logger = logging.getLogger(__name__)
 
