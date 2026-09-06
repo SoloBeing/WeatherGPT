@@ -93,6 +93,10 @@ class Alert(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    __table_args__ = (
+        Index("ix_alerts_active_filter", "status", "expires", "severity"),
+    )
+
 
 class UserLocation(Base):
     """
@@ -119,6 +123,10 @@ class UserLocation(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    __table_args__ = (
+        Index("ix_user_locations_active_district", "active", "state", "district"),
+    )
+
 
 class Gazetteer(Base):
     """
@@ -142,6 +150,21 @@ class Gazetteer(Base):
         nullable=True,
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_gazetteer_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_gazetteer_name_hi_trgm",
+            "name_hi",
+            postgresql_using="gin",
+            postgresql_ops={"name_hi": "gin_trgm_ops"},
+        ),
+    )
 
 
 class Observation(Base):
