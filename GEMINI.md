@@ -106,7 +106,7 @@ app/
 
 ## Current State (updated each session)
 
-**Last session:** Dev Session 04 (2026-09-06)  
+**Last session:** Dev Session 05 (2026-09-06)  
 **What exists:**
 - ✅ **POST /chat** works end-to-end with Open-Meteo forecasts and SACHET/IMD active disaster alerts
 - ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR → NMT → LLM → NMT → TTS → Audio
