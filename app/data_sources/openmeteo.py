@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 import httpx
 
 from app.config import settings
+from app.core.resilience import classify_http_error, retry_async
 from app.data_sources.base import BaseDataSource
 from app.models.schemas import (
     DailyForecast,
@@ -120,6 +121,25 @@ class OpenMeteoClient(BaseDataSource):
             headers={"User-Agent": "WeatherGPT/0.1"},
         )
 
+    async def _get_json_with_retry(self, endpoint: str, params: dict) -> dict:
+        """Fetch JSON from Open-Meteo endpoint with jittered exponential backoff."""
+        async def _call():
+            resp = await self._client.get(endpoint, params=params)
+            resp.raise_for_status()
+            return resp.json()
+
+        try:
+            return await retry_async(
+                _call,
+                max_retries=3,
+                base_delay=0.3,
+                max_delay=2.5,
+                operation_name=f"Open-Meteo {endpoint}",
+            )
+        except Exception as exc:
+            logger.error("Open-Meteo API error (%s): %s", endpoint, classify_http_error(exc))
+            raise
+
     async def fetch_current(self, lat: float, lon: float) -> ForecastPoint:
         """Fetch current weather from Open-Meteo /forecast endpoint.
 
@@ -133,7 +153,7 @@ class OpenMeteoClient(BaseDataSource):
         Raises:
             httpx.HTTPStatusError: If the API returns a non-2xx response.
         """
-        resp = await self._client.get(
+        data = await self._get_json_with_retry(
             "/forecast",
             params={
                 "latitude": lat,
@@ -143,8 +163,6 @@ class OpenMeteoClient(BaseDataSource):
                 "wind_speed_unit": "kmh",
             },
         )
-        resp.raise_for_status()
-        data = resp.json()
 
         current = data["current"]
         weather_code = current.get("weather_code")
@@ -216,9 +234,7 @@ class OpenMeteoClient(BaseDataSource):
         if include_hourly:
             params["hourly"] = ",".join(_HOURLY_PARAMS)
 
-        resp = await self._client.get("/forecast", params=params)
-        resp.raise_for_status()
-        data = resp.json()
+        data = await self._get_json_with_retry("/forecast", params=params)
 
         daily_data = data.get("daily", {})
         times = daily_data.get("time", [])
