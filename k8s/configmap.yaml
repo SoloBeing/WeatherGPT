@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: weathergpt-config
+  namespace: weathergpt
+  labels:
+    app.kubernetes.io/name: weathergpt
+    app.kubernetes.io/component: configuration
+data:
+  APP_NAME: "WeatherGPT"
+  DEBUG: "false"
+  PORT: "8000"
+  UVICORN_WORKERS: "2"
+  
+  # Redis connection
+  REDIS_URL: "redis://weathergpt-redis:6379/0"
+  REDIS_MAX_CONNECTIONS: "50"
+  REDIS_SOCKET_TIMEOUT: "2.0"
+  REDIS_SOCKET_CONNECT_TIMEOUT: "2.0"
+
+  # Connection pool tunings
+  DB_POOL_SIZE: "20"
+  DB_MAX_OVERFLOW: "10"
+  DB_POOL_TIMEOUT: "30.0"
+  DB_POOL_RECYCLE: "1800"
+  HTTP_MAX_CONNECTIONS: "100"
+  HTTP_MAX_KEEPALIVE_CONNECTIONS: "20"
+  HTTP_KEEPALIVE_EXPIRY: "30.0"
+  HTTP_TIMEOUT: "10.0"
+
+  # MinIO Object Store
+  MINIO_ENDPOINT: "weathergpt-minio:9000"
+  MINIO_BUCKET: "weathergpt"
+
+  # External endpoints
+  OPENMETEO_BASE_URL: "https://api.open-meteo.com/v1"
+  IMD_BASE_URL: "https://mausam.imd.gov.in/api"
+  SACHET_FEED_URL: "https://sachet.ndma.gov.in/cap_feed"
+  
+  # Models default
+  LLM_MODEL: "groq/openai/gpt-oss-120b"
+  INTENT_MODEL: "groq/qwen/qwen3.8-27b"
+  GROQ_WHISPER_MODEL: "whisper-large-v3"
