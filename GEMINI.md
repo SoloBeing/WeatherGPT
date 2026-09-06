@@ -86,6 +86,11 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
     4. Write a comprehensive summary dev-log in `dev-logs/` after all fixes are completed at the end of the session.
 
 
+## Development Rules & Testing Invariant
+
+- **Immediate Pytest Verification:** Every time you edit or write code (Python files, configurations, schemas, migrations, or tests — excluding documentation markdowns), run `uv run pytest` immediately after that edit to check if anything broke and detect regressions at the earliest possible moment before proceeding.
+
+
 ## Configuration
 
 - All settings in `app/config.py` via pydantic-settings
@@ -103,7 +108,7 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 ## Current State (updated each session)
 
-**Last session:** Dev Session 02 (2026-09-05)  
+**Last session:** Dev Session 03 (2026-09-06)  
 **What exists:**
 - ✅ **POST /chat** works end-to-end with Open-Meteo forecasts and SACHET/IMD active disaster alerts
 - ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR → NMT → LLM → NMT → TTS → Audio
