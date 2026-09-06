@@ -1,4 +1,4 @@
-# ingestion_pipelines — Context
+# pipelines — Context
 
 ## Role
 Background data ingestion. Runs on its own clock, NEVER in the request path.

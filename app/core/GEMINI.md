@@ -1,4 +1,4 @@
-# llm_orchestrator — Context
+# core — Context
 
 ## Role
 The brain: intent classification → tool dispatch → response phrasing.

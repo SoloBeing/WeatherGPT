@@ -1,4 +1,4 @@
-# weather_tools — Context
+# tools — Context
 
 ## Role
 The 5 spec-defined tools + location resolver. Each tool returns structured JSON.

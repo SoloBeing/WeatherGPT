@@ -1,4 +1,4 @@
-# external_services — Context
+# services — Context
 
 ## Role
 Clients for third-party services that aren't weather data sources.

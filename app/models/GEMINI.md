@@ -1,4 +1,4 @@
-# schemas_and_models — Context
+# models — Context
 
 ## Role
 All type definitions in one place: Pydantic schemas (API) + SQLAlchemy models (DB).

@@ -1,4 +1,4 @@
-# api_gateway — Context
+# api — Context
 
 ## Role
 FastAPI route handlers and dependency injection. This is the HTTP boundary layer.
@@ -11,7 +11,7 @@ FastAPI route handlers and dependency injection. This is the HTTP boundary layer
 - `routes/websocket.py` — Real-time push (MQTT in → WebSocket out to browser)
 
 ## Rules
-- Routes are thin — no business logic here, delegate to llm_orchestrator or weather_tools
+- Routes are thin — no business logic here, delegate to core or tools
 - All routes are async
 - Use dependency injection from deps.py for DB/Redis/settings
 - Stream tokens to client so first-token is <500ms
