@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.ingestion_pipelines.sachet_poller import sachet_poller
+from app.pipelines.sachet_poller import sachet_poller
 from app.models.schemas import AlertRecord
 
 logger = logging.getLogger(__name__)

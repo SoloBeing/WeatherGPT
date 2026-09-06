@@ -18,8 +18,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.database import cache, zarr_storage
-from app.ingestion_pipelines.gfs_pipeline import gfs_pipeline
-from app.ingestion_pipelines.sachet_poller import sachet_poller
+from app.pipelines.gfs_pipeline import gfs_pipeline
+from app.pipelines.sachet_poller import sachet_poller
 
 logger = logging.getLogger(__name__)
 

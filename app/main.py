@@ -20,7 +20,7 @@ from app.api_gateway.routes.chat import router as chat_router
 from app.api_gateway.routes.voice import router as voice_router
 from app.api_gateway.routes.websocket import router as ws_router
 from app.config import settings
-from app.ingestion_pipelines.scheduler import ingestion_scheduler
+from app.pipelines.scheduler import ingestion_scheduler
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.data_sources.openmeteo import openmeteo_client
     from app.database import cache, close_db
     from app.services.bhashini import bhashini_service
-    from app.ingestion_pipelines.sachet_poller import sachet_poller
+    from app.pipelines.sachet_poller import sachet_poller
 
     try:
         ingestion_scheduler.shutdown()

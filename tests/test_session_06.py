@@ -36,14 +36,14 @@ from app.models.db_models import (
     UserLocation,
 )
 from app.data_sources.gfs import gfs_client
-from app.ingestion_pipelines.gfs_pipeline import (
+from app.pipelines.gfs_pipeline import (
     INDIA_LAT_MIN,
     INDIA_LAT_MAX,
     INDIA_LON_MIN,
     INDIA_LON_MAX,
     gfs_pipeline,
 )
-from app.ingestion_pipelines.scheduler import ingestion_scheduler
+from app.pipelines.scheduler import ingestion_scheduler
 from app.tools.current import get_current_weather
 from app.tools.forecast import get_forecast
 from app.main import app

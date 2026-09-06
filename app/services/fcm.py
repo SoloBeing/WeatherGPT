@@ -13,7 +13,7 @@ from typing import Optional
 import uuid
 
 from app.config import settings
-from app.ingestion_pipelines.sachet_poller import sachet_poller
+from app.pipelines.sachet_poller import sachet_poller
 from app.models.schemas import AlertRecord
 
 logger = logging.getLogger(__name__)
