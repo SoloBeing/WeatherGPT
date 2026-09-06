@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.services.bhashini import SUPPORTED_LANGUAGES, bhashini_service
-from app.llm_orchestrator.router import chat
+from app.core.router import chat
 from app.models.schemas import VoiceChatResponse
 
 logger = logging.getLogger(__name__)
