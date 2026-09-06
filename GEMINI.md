@@ -134,35 +134,56 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 - ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health with subsystem reporting
 - ✅ **Dev Session 01 (`tests/test_session_06.py`)** — Standardized on pytest + pytest-asyncio, decoupled weather tools test via `synthetic_gfs_cycle` fixture, eliminated dead imports and magic coordinates, resolved brittle geocoding and hardcoded dates.
 - ✅ **Dev Session 02 (`alembic/`)** — Migration infrastructure audit: protected side-effect registrations (`geoalchemy2` & `db_models`) with `# noqa: F401` against linter auto-stripping, condensed boilerplate template docstrings in `alembic/env.py`, and verified `script.py.mako` templating.
-- ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, wired clean shutdown handlers for HTTP clients (`BhashiniService`, `openmeteo_client`) and background pools, guarded audio uploads and Zarr dataset file handles with `try...finally`, enabled Zarr format 3 compliance (`consolidated=False`), and configured strict warning-free pytest filters.
+- ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, wired clean shutdown handlers for HTTP clients (`BhashiniService`, `openmeteo_client`) and background pools, guarded audio uploads and Zarr dataset file handles with `try...finally`, enabled Zarr format 3 compliance (`consolidated=False`), and configured strict warning-free pytest filters (`error` default with third-party ignores).
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Status: Holding Session 07 — Focusing on Dev Sessions (Refactoring, Maintainability & Scalability)
+## Dev Session 03 Summary (`dev-logs/03-dev-session/summary.md`)
 
-Session 07 (Docker Compose, K8s manifests, final shipping) is held until further notice to prioritize polishing, refactoring, and strengthening the existing codebase.
+- **Focus:** App core lifecycle modernization, shutdown safety, file descriptor resource guards, and warning hygiene.
+- **Commits:**
+  - `8ac5b16`: `refactor(core): replace deprecated on_event with async lifespan context manager`
+  - `6d0e12c`: `feat(services): add clean shutdown hooks for HTTP clients and services in lifespan`
+  - `a2f2fd9`: `fix(voice): protect audio file descriptor lifecycle with try-finally cleanup`
+  - `b7a66ad`: `fix(grid): guard Zarr dataset file handles with try-finally closing`
+  - `dd9bece`: `fix(storage): enforce consolidated=False in Zarr storage for format 3 compliance`
+  - `cd8bbb4`: `test(zarr): add dataset handle closing in test_zarr_storage_roundtrip finally block`
+  - `dd1f2a1`: `test(config): configure strict filterwarnings to ignore upstream deprecations`
+  - `9214717`: `docs(dev-session): complete Dev Session 03 app core and lifespan audit`
+  - `6de1bec`: `docs: add immediate pytest verification rule to GEMINI.md`
+- **Result:** 6/6 tests passing with 0 warnings under strict `-W error` enforcement.
 
-### Upcoming Dev Sessions Focus:
+## What to Build Next: Dev Session 04 (Architecture & Module Naming Polish)
 
-1. **Dev Session 04: Architecture & Module Naming Polish**
-   - Execute planned verbose name shortening from development scaffold:
-     - `api_gateway/` → `api/`
-     - `llm_orchestrator/` → `core/`
-     - `weather_tools/` → `tools/`
-     - `schemas_and_models/` → `models/`
-     - `ingestion_pipelines/` → `pipelines/`
-     - `external_services/` → `services/`
+Session 07 (Docker Compose, K8s manifests, final shipping) remains on hold to prioritize codebase refactoring and maintainability.
+
+### Dev Session 04 Scope:
+1. **Module & Directory Shortening (from Dev Scaffolding to Production Layout):**
+   - Rename directories under `app/`:
+     - `app/api_gateway/` → `app/api/`
+     - `app/llm_orchestrator/` → `app/core/`
+     - `app/weather_tools/` → `app/tools/`
+     - `app/schemas_and_models/` → `app/models/`
+     - `app/ingestion_pipelines/` → `app/pipelines/`
+     - `app/external_services/` → `app/services/`
+2. **Import Path Migration:**
    - Update all import paths cleanly across `app/`, `tests/`, and `alembic/`.
+   - Update `app/main.py` route inclusions and middleware references.
+   - Update Alembic `env.py` side-effect target model import (`app.models.db_models`).
+3. **Verification & Testing Invariant:**
+   - Run `uv run pytest` immediately after directory renaming and import updates.
+   - Verify that all endpoints, tools, pipelines, and ORM registrations work identically.
+   - Write `dev-logs/04-dev-session/summary.md` with full atomic commit log.
 
-2. **Dev Session 05: Robustness & Data Source Fault Tolerance**
-   - Enhance resilience for GFS and Open-Meteo clients (exponential backoff, circuit breaking, typed exceptions).
-   - Ensure Zarr store index listing filters strictly for valid model cycles (`gfs_*`) to prevent uninitialized directory collisions.
-   - Add comprehensive mock fixtures in tests for offline test reproducibility across all test suites (Sessions 02–05).
-
-3. **Dev Session 06: Scalability & Performance Auditing**
-   - Optimize spatial point-slicing in `GFSClient` with persistent dataset handles or caching open stores.
-   - Validate TimescaleDB hypertable query plans and PostGIS spatial indexing (`gist(geom)`).
-   - Expand Redis precomputation strategies for top meteorological queries and alert lookups.
+### Subsequent Dev Sessions:
+- **Dev Session 05: Robustness & Data Source Fault Tolerance**
+  - Exponential backoff and typed error handling for GFS and Open-Meteo.
+  - Zarr store directory validation (`gfs_*`).
+  - Mock fixtures for offline test reproducibility.
+- **Dev Session 06: Scalability & Performance Auditing**
+  - Spatial point-slicing caching / persistent dataset handles.
+  - TimescaleDB query plans & spatial GiST indexing verification.
+  - Precomputation warming expansion.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -177,7 +198,8 @@ Session 07 (Docker Compose, K8s manifests, final shipping) is held until further
 | — | **Dev-01** | ✅ Test Suite Polish (`test_session_06.py`), pytest runner, decoupling | Refactor |
 | — | **Dev-02** | ✅ Alembic Migration Audit (`env.py`, F401 protection, docstrings) | Maintainability |
 | — | **Dev-03** | ✅ App Core & Lifespan Audit (`app/`, `try...finally`, warning hygiene) | Maintainability |
-| — | **Dev-04+** | Codebase Polish: Architecture & Module Naming Polish, Fault Tolerance | Maintainability |
+| — | **Dev-04** | ⏳ Architecture & Module Naming Polish (`api`, `core`, `tools`, `models`) | Maintainability |
+| — | **Dev-05+** | Robustness & Data Source Fault Tolerance, Performance Auditing | Maintainability |
 | 7 (Sep 06) | 07 | *[On Hold]* Docker Compose, polish, demo prep, final tests | Ship |
 
 
