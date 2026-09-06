@@ -59,21 +59,37 @@ class GFSClient(BaseDataSource):
     def has_data_for(self, lat: float, lon: float) -> bool:
         """
         Check whether this coordinates point falls within India NWP domain
-        and at least one Zarr cycle is available.
+        and at least one valid Zarr cycle is available.
         """
         if not (INDIA_LAT_MIN <= lat <= INDIA_LAT_MAX and INDIA_LON_MIN <= lon <= INDIA_LON_MAX):
             return False
-        cycles = zarr_storage.list_saved_cycles()
+        cycles = zarr_storage.list_saved_cycles(validate=True)
         return len(cycles) > 0
 
     def _get_active_dataset(self) -> tuple[xr.Dataset, str]:
-        """Open the most recent available GFS Zarr store."""
-        cycles = zarr_storage.list_saved_cycles()
+        """Open the most recent available valid GFS Zarr store, falling back to older cycles if needed."""
+        cycles = zarr_storage.list_saved_cycles(validate=True)
         if not cycles:
             raise FileNotFoundError("No GFS Zarr cycle datasets found in storage.")
-        latest_cycle = cycles[0]
-        ds = zarr_storage.open_dataset(f"data/zarr_stores/gfs/{latest_cycle}.zarr")
-        return ds, latest_cycle
+
+        last_error: Exception | None = None
+        for cycle_key in cycles:
+            store_path = f"data/zarr_stores/gfs/{cycle_key}.zarr"
+            try:
+                ds = zarr_storage.open_dataset(store_path)
+                return ds, cycle_key
+            except Exception as exc:
+                logger.warning(
+                    "Failed to open GFS Zarr cycle '%s' (%s). Trying next available cycle...",
+                    cycle_key,
+                    exc,
+                )
+                last_error = exc
+                continue
+
+        raise FileNotFoundError(
+            f"All {len(cycles)} candidate GFS Zarr cycles failed to open. Last error: {last_error}"
+        )
 
     async def fetch_current(self, lat: float, lon: float) -> ForecastPoint:
         """
