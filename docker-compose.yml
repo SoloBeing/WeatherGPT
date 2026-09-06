@@ -1,0 +1,198 @@
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Database: PostgreSQL 16 with PostGIS and TimescaleDB
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: timescale/timescaledb-ha:pg16
+    container_name: weathergpt-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-weathergpt}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-weathergpt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weathergpt-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Cache: Redis for point forecast caching and SingleFlight deduplication
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: weathergpt-redis
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "notice"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weathergpt-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Object Store: MinIO for GFS Zarr stores and satellite assets
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: weathergpt-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weathergpt-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MinIO Bucket Initialization: Auto-create weathergpt bucket
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: weathergpt-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin};
+      /usr/bin/mc mb --ignore-existing myminio/${MINIO_BUCKET:-weathergpt};
+      /usr/bin/mc anonymous set download myminio/${MINIO_BUCKET:-weathergpt};
+      exit 0;
+      "
+    networks:
+      - weathergpt-net
+
+  # ---------------------------------------------------------------------------
+  # Database Migrations: Run Alembic migrations prior to API boot
+  # ---------------------------------------------------------------------------
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: weathergpt-api:latest
+    container_name: weathergpt-migrations
+    entrypoint: ["entrypoint.sh", "migrate"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-weathergpt}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - weathergpt-net
+    restart: on-failure
+
+  # ---------------------------------------------------------------------------
+  # WeatherGPT API Gateway: FastAPI Application
+  # ---------------------------------------------------------------------------
+  api:
+    image: weathergpt-api:latest
+    container_name: weathergpt-api
+    entrypoint: ["entrypoint.sh", "api"]
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-weathergpt}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-weathergpt}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      INTENT_MODEL: ${INTENT_MODEL:-gpt-4o-mini}
+      BHASHINI_API_KEY: ${BHASHINI_API_KEY:-}
+      BHASHINI_USER_ID: ${BHASHINI_USER_ID:-}
+      BHASHINI_INFERENCE_KEY: ${BHASHINI_INFERENCE_KEY:-}
+      OPENMETEO_BASE_URL: ${OPENMETEO_BASE_URL:-https://api.open-meteo.com/v1}
+      IMD_BASE_URL: ${IMD_BASE_URL:-https://mausam.imd.gov.in/api}
+      SACHET_FEED_URL: ${SACHET_FEED_URL:-https://sachet.ndma.gov.in/cap_feed}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      PORT: 8000
+      DEBUG: ${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - weathergpt-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Background Ingestion & Alerts Worker: APScheduler
+  # ---------------------------------------------------------------------------
+  worker:
+    image: weathergpt-api:latest
+    container_name: weathergpt-worker
+    entrypoint: ["entrypoint.sh", "worker"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-weathergpt}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-weathergpt}
+      OPENMETEO_BASE_URL: ${OPENMETEO_BASE_URL:-https://api.open-meteo.com/v1}
+      IMD_BASE_URL: ${IMD_BASE_URL:-https://mausam.imd.gov.in/api}
+      SACHET_FEED_URL: ${SACHET_FEED_URL:-https://sachet.ndma.gov.in/cap_feed}
+      DEBUG: ${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - weathergpt-net
+    restart: unless-stopped
+
+networks:
+  weathergpt-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  miniodata:
+    driver: local

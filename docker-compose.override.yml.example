@@ -1,0 +1,21 @@
+# Example docker-compose.override.yml for local development
+# Copy this file to docker-compose.override.yml to enable live reload and source mounts.
+#
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+version: "3.9"
+
+services:
+  api:
+    volumes:
+      - ./app:/app/app:ro
+      - ./alembic:/app/alembic:ro
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      DEBUG: "true"
+
+  worker:
+    volumes:
+      - ./app:/app/app:ro
+    environment:
+      DEBUG: "true"
