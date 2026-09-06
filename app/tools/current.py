@@ -9,7 +9,7 @@ import json
 import logging
 
 from app.database.redis_cache import cache
-from app.data_sources.openmeteo import OpenMeteoClient
+from app.data_sources.openmeteo import openmeteo_client
 from app.tools.location_resolver import resolve_location
 
 logger = logging.getLogger(__name__)
@@ -72,15 +72,12 @@ async def get_current_weather(location: str) -> str:
             logger.warning("GFS Zarr extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
 
     if point is None:
-        client = OpenMeteoClient()
         try:
-            point = await client.fetch_current(best.lat, best.lon)
+            point = await openmeteo_client.fetch_current(best.lat, best.lon)
             point.location_name = location_display
         except Exception as e:
             logger.error("Weather fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
             return json.dumps({"error": f"Weather data unavailable for {location}. {e}"})
-        finally:
-            await client.close()
 
     logger.info(
         "Current weather for %s: %.1f°C, %s",

@@ -9,7 +9,7 @@ import json
 import logging
 
 from app.database.redis_cache import cache
-from app.data_sources.openmeteo import OpenMeteoClient
+from app.data_sources.openmeteo import openmeteo_client
 from app.tools.location_resolver import resolve_location
 
 logger = logging.getLogger(__name__)
@@ -76,15 +76,12 @@ async def get_forecast(location: str, days: int = 5, include_hourly: bool = Fals
             logger.warning("GFS Zarr forecast extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
 
     if timeline is None:
-        client = OpenMeteoClient()
         try:
-            timeline = await client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
+            timeline = await openmeteo_client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
             timeline.location_name = location_display
         except Exception as e:
             logger.error("Forecast fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
             return json.dumps({"error": f"Forecast data unavailable for {location}. {e}"})
-        finally:
-            await client.close()
 
     logger.info(
         "Forecast for %s: %d days retrieved",

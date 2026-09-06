@@ -90,7 +90,14 @@ class BhashiniService:
         self._pipeline_cached_at: float = 0.0
 
         # HTTP client (shared, connection-pooled)
-        self._client = httpx.AsyncClient(timeout=30.0)
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=5.0),
+            limits=httpx.Limits(
+                max_connections=settings.HTTP_MAX_CONNECTIONS,
+                max_keepalive_connections=settings.HTTP_MAX_KEEPALIVE_CONNECTIONS,
+                keepalive_expiry=settings.HTTP_KEEPALIVE_EXPIRY,
+            ),
+        )
 
         self._sandbox = not (self._api_key and self._user_id)
         if self._sandbox:

@@ -311,7 +311,15 @@ class SachetPoller:
         self._seen_alert_ids: set[str] = set()
         self._listeners: list[Callable[[AlertRecord], Coroutine[Any, Any, None]]] = []
         self._polling_task: Optional[asyncio.Task] = None
-        self._http_client = httpx.AsyncClient(timeout=10.0, headers={"User-Agent": "WeatherGPT/0.1"})
+        self._http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, connect=5.0),
+            headers={"User-Agent": "WeatherGPT/0.1"},
+            limits=httpx.Limits(
+                max_connections=settings.HTTP_MAX_CONNECTIONS,
+                max_keepalive_connections=settings.HTTP_MAX_KEEPALIVE_CONNECTIONS,
+                keepalive_expiry=settings.HTTP_KEEPALIVE_EXPIRY,
+            ),
+        )
 
         # Load initial sample alerts immediately
         self._load_seed_alerts()

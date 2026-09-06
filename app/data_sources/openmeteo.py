@@ -115,9 +115,16 @@ class OpenMeteoClient(BaseDataSource):
     source_name: str = "open-meteo"
 
     def __init__(self) -> None:
+        limits = httpx.Limits(
+            max_connections=settings.HTTP_MAX_CONNECTIONS,
+            max_keepalive_connections=settings.HTTP_MAX_KEEPALIVE_CONNECTIONS,
+            keepalive_expiry=settings.HTTP_KEEPALIVE_EXPIRY,
+        )
+        timeout = httpx.Timeout(settings.HTTP_TIMEOUT, connect=5.0)
         self._client = httpx.AsyncClient(
             base_url=settings.OPENMETEO_BASE_URL,
-            timeout=10.0,
+            timeout=timeout,
+            limits=limits,
             headers={"User-Agent": "WeatherGPT/0.1"},
         )
 
@@ -340,3 +347,8 @@ class OpenMeteoClient(BaseDataSource):
     async def close(self) -> None:
         """Close the underlying httpx client."""
         await self._client.aclose()
+
+
+# Shared singleton instance
+openmeteo_client = OpenMeteoClient()
+
