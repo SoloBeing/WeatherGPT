@@ -18,7 +18,7 @@ ForecastPoint includes:
 
 from abc import ABC, abstractmethod
 
-from app.schemas_and_models.schemas import ForecastPoint, ForecastTimeline
+from app.models.schemas import ForecastPoint, ForecastTimeline
 
 
 class BaseDataSource(ABC):

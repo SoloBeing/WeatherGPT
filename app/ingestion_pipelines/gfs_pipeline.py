@@ -20,7 +20,7 @@ from sqlalchemy import select
 import xarray as xr
 
 from app.database import get_session_factory, zarr_storage
-from app.schemas_and_models.db_models import ForecastCycle
+from app.models.db_models import ForecastCycle
 
 logger = logging.getLogger(__name__)
 

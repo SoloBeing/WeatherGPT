@@ -9,7 +9,7 @@ import geoalchemy2  # noqa: F401 — registers GeoAlchemy2 comparator
 
 from app.config import settings
 from app.database.session import Base
-import app.schemas_and_models.db_models  # noqa: F401 — ensure all models are registered
+import app.models.db_models  # noqa: F401 — ensure all models are registered
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

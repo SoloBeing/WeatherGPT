@@ -3,7 +3,7 @@ Schemas and Models module.
 Exports Pydantic domain models and SQLAlchemy ORM models.
 """
 
-from app.schemas_and_models.db_models import (
+from app.models.db_models import (
     Alert,
     Base,
     ForecastCycle,
@@ -11,7 +11,7 @@ from app.schemas_and_models.db_models import (
     Observation,
     UserLocation,
 )
-from app.schemas_and_models.schemas import (
+from app.models.schemas import (
     AlertListResponse,
     AlertRecord,
     ChatRequest,

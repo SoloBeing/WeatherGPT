@@ -10,7 +10,7 @@ import logging
 from typing import Optional
 
 from app.ingestion_pipelines.sachet_poller import sachet_poller
-from app.schemas_and_models.schemas import AlertListResponse
+from app.models.schemas import AlertListResponse
 from app.weather_tools.location_resolver import resolve_location
 
 logger = logging.getLogger(__name__)

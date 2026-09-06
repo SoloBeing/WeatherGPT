@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from app.config import settings
-from app.schemas_and_models.schemas import AlertRecord
+from app.models.schemas import AlertRecord
 
 logger = logging.getLogger(__name__)
 

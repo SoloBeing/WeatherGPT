@@ -13,7 +13,7 @@ import httpx
 
 from app.config import settings
 from app.data_sources.base import BaseDataSource
-from app.schemas_and_models.schemas import (
+from app.models.schemas import (
     DailyForecast,
     ForecastPoint,
     ForecastTimeline,

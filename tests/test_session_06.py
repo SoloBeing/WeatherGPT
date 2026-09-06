@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import Base, zarr_storage
-from app.schemas_and_models.db_models import (
+from app.models.db_models import (
     Alert,
     ForecastCycle,
     Gazetteer,

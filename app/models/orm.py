@@ -1,9 +1,9 @@
 """
 SQLAlchemy ORM models export module.
-Alias for app.schemas_and_models.db_models to match GEMINI.md task specification.
+Alias for app.models.db_models to match GEMINI.md task specification.
 """
 
-from app.schemas_and_models.db_models import (
+from app.models.db_models import (
     Alert,
     Base,
     ForecastCycle,

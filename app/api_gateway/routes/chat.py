@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.llm_orchestrator.router import chat
-from app.schemas_and_models.schemas import ChatRequest, ChatResponse
+from app.models.schemas import ChatRequest, ChatResponse
 
 logger = logging.getLogger(__name__)
 

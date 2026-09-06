@@ -18,7 +18,7 @@ from typing import Optional
 
 import httpx
 
-from app.schemas_and_models.schemas import LocationMatch
+from app.models.schemas import LocationMatch
 
 logger = logging.getLogger(__name__)
 

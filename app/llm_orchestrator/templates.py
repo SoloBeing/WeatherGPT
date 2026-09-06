@@ -16,7 +16,7 @@ Supported template languages: en, hi, ta, te, bn, mr
 Other languages fall back to English template + Bhashini NMT translation.
 """
 
-from app.schemas_and_models.schemas import (
+from app.models.schemas import (
     AlertListResponse,
     ForecastPoint,
     ForecastTimeline,

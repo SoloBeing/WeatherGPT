@@ -17,7 +17,7 @@ import xarray as xr
 
 from app.database import zarr_storage
 from app.data_sources.base import BaseDataSource
-from app.schemas_and_models.schemas import (
+from app.models.schemas import (
     DailyForecast,
     ForecastPoint,
     ForecastTimeline,

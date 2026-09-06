@@ -14,7 +14,7 @@ import uuid
 
 from app.config import settings
 from app.ingestion_pipelines.sachet_poller import sachet_poller
-from app.schemas_and_models.schemas import AlertRecord
+from app.models.schemas import AlertRecord
 
 logger = logging.getLogger(__name__)
 

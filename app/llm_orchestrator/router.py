@@ -23,7 +23,7 @@ import litellm
 
 from app.config import settings
 from app.database.redis_cache import cache
-from app.schemas_and_models.schemas import ChatResponse
+from app.models.schemas import ChatResponse
 from app.weather_tools.alerts_tool import get_alerts
 from app.weather_tools.current import get_current_weather
 from app.weather_tools.forecast import get_forecast
