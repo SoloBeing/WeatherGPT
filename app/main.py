@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("🛑 WeatherGPT shutting down")
     from app.data_sources.openmeteo import openmeteo_client
     from app.database import cache, close_db
-    from app.external_services.bhashini import bhashini_service
+    from app.services.bhashini import bhashini_service
     from app.ingestion_pipelines.sachet_poller import sachet_poller
 
     try:
