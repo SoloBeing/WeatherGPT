@@ -42,11 +42,27 @@ def get_engine() -> AsyncEngine:
         if db_url.startswith("sqlite"):
             connect_args = {"check_same_thread": False}
 
-        _engine = create_async_engine(
-            db_url,
-            echo=settings.DEBUG,
-            pool_pre_ping=True,
-            connect_args=connect_args,
+        engine_kwargs: dict[str, Any] = {
+            "echo": settings.DEBUG,
+            "pool_pre_ping": True,
+            "connect_args": connect_args,
+        }
+        if not db_url.startswith("sqlite"):
+            engine_kwargs.update(
+                {
+                    "pool_size": settings.DB_POOL_SIZE,
+                    "max_overflow": settings.DB_MAX_OVERFLOW,
+                    "pool_timeout": settings.DB_POOL_TIMEOUT,
+                    "pool_recycle": settings.DB_POOL_RECYCLE,
+                }
+            )
+
+        _engine = create_async_engine(db_url, **engine_kwargs)
+        logger.info(
+            "Async database engine created (pool_size=%s, max_overflow=%s, recycle=%ss)",
+            getattr(_engine.pool, "_pool", None) and getattr(_engine.pool, "size", lambda: None)() or settings.DB_POOL_SIZE,
+            settings.DB_MAX_OVERFLOW,
+            settings.DB_POOL_RECYCLE,
         )
     return _engine
 
