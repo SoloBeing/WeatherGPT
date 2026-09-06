@@ -106,14 +106,20 @@ app/
 
 ## Current State (updated each session)
 
-**Last session:** Dev Session 05 (2026-09-06)  
+**Last session:** Session 07 & Frontend Enablement (2026-09-06)  
 **What exists:**
-- ✅ **POST /chat** works end-to-end with Open-Meteo forecasts and SACHET/IMD active disaster alerts
+- ✅ **POST /chat** works end-to-end with Open-Meteo forecasts, GFS Zarr stores, and SACHET/IMD active disaster alerts, with raw structured data in `ChatResponse.data` for simultaneous conversational text and interactive UI cards
+- ✅ **Direct REST Weather & Alert Endpoints:**
+  - `GET /weather/current?location=...` (or `?lat=...&lon=...`) — raw JSON `ForecastPoint`
+  - `GET /weather/forecast?location=...&days=5` — structured `ForecastTimeline`
+  - `GET /weather/locations?q=...` — autocomplete & geocoding `LocationMatch[]`
+  - `GET /alerts?location=...` — active disaster alerts for target region
+  - `GET /alerts/active` — all active nationwide NDMA SACHET / IMD warnings
 - ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR → NMT → LLM → NMT → TTS → Audio
 - ✅ **GET /voice/languages** — returns 23 supported language codes
 - ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch`, `VoiceChatResponse` schemas in `app/models/schemas.py`
 - ✅ **SQLAlchemy ORM Models** (`ForecastCycle`, `Alert`, `UserLocation`, `Gazetteer`, `Observation`) with GeoAlchemy2 PostGIS types and TimescaleDB hypertable target in `app/models/db_models.py` and `app/models/orm.py`
-- ✅ **Alembic async migrations** configured in `alembic.ini` and `alembic/env.py` with initial migration `0001_initial_schema.py` supporting `postgis`, `pg_trgm`, and `timescaledb`
+- ✅ **Alembic async migrations** configured in `alembic.ini` and `alembic/env.py` with initial migrations `0001_initial_schema.py` and `0002_performance_and_spatial_indexes.py` supporting `postgis`, `pg_trgm`, GIN indexes, and `timescaledb`
 - ✅ **MinIO / local Zarr storage layer** (`app/database/minio_client.py`) with automatic partitioning and chunking for millisecond spatial slicing
 - ✅ **GFS GRIB2 Ingestion Pipeline** (`app/pipelines/gfs_pipeline.py`) fetching NOAA GFS 0.25° models via `Herbie`, subsetting to India bounding box (6°-38°N, 68°-98°E), decoding via `cfgrib`/`xarray`, deriving 12 meteorological variables, and persisting to Zarr
 - ✅ **APScheduler background jobs** (`app/pipelines/scheduler.py`) running 4x daily GFS ingest (03:30, 09:30, 15:30, 21:30 UTC), 60s SACHET alert feed polling, and precomputing forecasts for 18 key Indian state capitals and metropolitan hubs into Redis
@@ -122,7 +128,8 @@ app/
 - ✅ SACHET CAP-XML Poller & active alert registry with spatial polygon and district/state matching in `app/pipelines/sachet_poller.py`
 - ✅ Location resolver (Open-Meteo geocoding + 36 Indian States/UTs Gazetteer) in `app/tools/location_resolver.py`
 - ✅ `get_current_weather`, `get_forecast`, `get_alerts` tools with Redis cache-aside in `app/tools/`
-- ✅ Redis cache client (`app/database/redis_cache.py`) with fail-open fallback
+- ✅ Redis cache client (`app/database/redis_cache.py`) with fail-open fallback and connection pooling
+- ✅ `SingleFlight` request coalescing in `app/core/resilience.py` preventing cache stampedes
 - ✅ WebSocket live alert streaming (`app/api/routes/websocket.py` on `/ws/alerts`)
 - ✅ FCM push notification service (`app/services/fcm.py`) with severity topic dispatch
 - ✅ Bhashini ULCA client (`app/services/bhashini.py`) — ASR, NMT, TTS with pipeline config caching
@@ -130,13 +137,17 @@ app/
 - ✅ LLM orchestrator (`app/core/router.py`) with litellm tool-calling loop, multi-turn conversation session history
 - ✅ Response templates — 6 languages: English, Hindi, Tamil, Telugu, Bengali, Marathi (`app/core/templates.py`)
 - ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health with subsystem reporting in `app/api/`
-- ✅ **Dev Session 01 (`tests/test_session_06.py`)** — Standardized on pytest + pytest-asyncio, decoupled weather tools test via `synthetic_gfs_cycle` fixture, eliminated dead imports and magic coordinates, resolved brittle geocoding and hardcoded dates.
-- ✅ **Dev Session 02 (`alembic/`)** — Migration infrastructure audit: protected side-effect registrations (`geoalchemy2` & `db_models`) with `# noqa: F401` against linter auto-stripping, condensed boilerplate template docstrings in `alembic/env.py`, and verified `script.py.mako` templating.
-- ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, wired clean shutdown handlers for HTTP clients (`BhashiniService`, `openmeteo_client`) and background pools, guarded audio uploads and Zarr dataset file handles with `try...finally`, enabled Zarr format 3 compliance (`consolidated=False`), and configured strict warning-free pytest filters (`error` default with third-party ignores).
-- ✅ **Dev Session 04 (`app/` production layout)** — Shortened development scaffolding module names to production hierarchy (`app/api/`, `app/core/`, `app/tools/`, `app/models/`, `app/pipelines/`, `app/services/`), migrated all imports across application, Alembic, and tests, aligned subpackage documentation, and verified 100% test pass rate with 0 warnings.
-- ✅ **Dev Session 05 (Robustness & Fault Tolerance)** — Implemented jittered exponential backoff and error classification (`app/core/resilience.py`), hardened Open-Meteo, Bhashini, and Location Resolver against transient network and rate-limit errors, added Zarr store integrity validation and GFS cycle failover (`app/database/minio_client.py`, `app/data_sources/gfs.py`), and established an offline mock test suite.
-- ✅ **Dev Session 06 (Scalability & Performance Auditing)** — Enforced persistent connection pooling across asyncpg (`DB_POOL_SIZE=20`), Redis (`ConnectionPool`), and HTTP clients (`httpx.Limits`), eliminated cache-stampedes via `SingleFlight` request coalescing, vectorized Zarr spatial point extraction with dataset handle caching and 1D index slicing, pipelined grid cache warming, and created Alembic migration `0002_performance_and_spatial_indexes.py` with GIN trigram and composite query indexes.
-- ✅ **Session 07 (Containerization, Kubernetes & Final Shipping)** — Built production multi-stage Dockerfile with Astral `uv` and non-root security (`weathergpt:10001`), full-stack `docker-compose.yml` orchestrating all 7 services (PostgreSQL PostGIS/TimescaleDB, Redis, MinIO, bucket init, migrations, API, and worker), 13 declarative Kubernetes manifests with Horizontal Pod Autoscaler (2-10 replicas, 70% CPU/80% memory) and NGINX Ingress WebSocket proxy, automated 8-step system demonstration runner (`scripts/demo.py`), and deployment test suite (`tests/test_session_07.py`) achieving 42/42 tests passing with 0 warnings.
+- ✅ **Frontend Developer Tooling & Types:**
+  - TypeScript interface definitions in `docs/weathergpt-types.ts`
+  - OpenAPI 3.1 specification in `docs/openapi.json`
+  - Integration and handoff guide in `docs/FRONTEND_HANDOFF.md`
+- ✅ **Dev Session 01 (`tests/test_session_06.py`)** — Standardized on pytest + pytest-asyncio, decoupled weather tools test via `synthetic_gfs_cycle` fixture, eliminated dead imports and magic coordinates.
+- ✅ **Dev Session 02 (`alembic/`)** — Migration infrastructure audit: protected side-effect registrations (`geoalchemy2` & `db_models`) with `# noqa: F401`.
+- ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, clean shutdown handlers for HTTP clients and pools, guarded file handles with `try...finally`.
+- ✅ **Dev Session 04 (`app/` production layout)** — Shortened development scaffolding module names to production hierarchy (`app/api/`, `app/core/`, `app/tools/`, `app/models/`, `app/pipelines/`, `app/services/`).
+- ✅ **Dev Session 05 (Robustness & Fault Tolerance)** — Jittered exponential backoff, HTTP error classification, Zarr integrity validation, and GFS cycle failover.
+- ✅ **Dev Session 06 (Scalability & Performance Auditing)** — Asyncpg (`DB_POOL_SIZE=20`), Redis (`ConnectionPool`), and HTTP client (`httpx.Limits`) connection pooling, `SingleFlight` coalescing, vectorized 1D Zarr index slicing, and GIN trigram indexes.
+- ✅ **Session 07 (Containerization, Kubernetes & Final Shipping)** — Multi-stage Dockerfile with Astral `uv` and non-root security (`weathergpt:10001`), full-stack `docker-compose.yml` (PostgreSQL PostGIS/TimescaleDB, Redis, MinIO, bucket init, migrations, API, and worker), 13 declarative Kubernetes manifests with Horizontal Pod Autoscaler (2-10 replicas) and NGINX Ingress WebSocket proxy, automated 8-step system demonstration runner (`scripts/demo.py`), and deployment test suite (`tests/test_session_07.py`) achieving 42/42 tests passing with 0 warnings.
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
@@ -148,6 +159,7 @@ app/
   - `22a5386`: `feat(deploy): implement full-stack docker compose orchestration and dev override`
   - `6aed4a1`: `feat(deploy): implement production Kubernetes manifests with HPA, StatefulSets, and Ingress`
   - `34bb346`: `feat(demo): implement end-to-end demo runner and deployment test suite`
+  - `6d65e3f`: `feat(api): add direct REST endpoints for weather, alerts, location search, and export TypeScript types`
 - **Result:** 42/42 tests passing in ~13s with 0 warnings under strict `-W error` enforcement.
 
 ## Production Status & Roadmap Completion
@@ -171,6 +183,7 @@ All 7 core milestones and 6 dev-refactoring sessions are complete. The WeatherGP
 | — | **Dev-05** | ✅ Robustness & Fault Tolerance (Backoff, Retries, Offline) | Maintainability |
 | — | **Dev-06** | ✅ Scalability & Performance Auditing (Pools, Batching, Caching) | Maintainability |
 | 7 (Sep 06) | **07** | ✅ Docker Compose, K8s manifests, demo prep, final shipping | Ship |
+
 
 
 
