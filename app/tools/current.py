@@ -8,6 +8,7 @@ precipitation, weather code. Sources: Open-Meteo → IMD fallback.
 import json
 import logging
 
+from app.core.resilience import single_flight
 from app.database.redis_cache import cache
 from app.data_sources.openmeteo import openmeteo_client
 from app.tools.location_resolver import resolve_location
@@ -59,37 +60,45 @@ async def get_current_weather(location: str) -> str:
 
     logger.debug("Cache MISS for current weather at %s (%.4f, %.4f)", location_display, best.lat, best.lon)
 
-    # Step 3: Fetch current weather (GFS NWP Zarr primary for India, Open-Meteo fallback)
-    point = None
-    from app.data_sources.gfs import gfs_client
+    flight_key = f"weather:current:{round(best.lat, 2):.2f}:{round(best.lon, 2):.2f}"
 
-    if gfs_client.has_data_for(best.lat, best.lon):
-        try:
-            logger.info("Extracting current weather from NOAA GFS 0.25° Zarr store for %s", location_display)
-            point = await gfs_client.fetch_current(best.lat, best.lon)
-            point.location_name = location_display
-        except Exception as e:
-            logger.warning("GFS Zarr extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
+    async def _fetch_and_cache() -> str:
+        # Re-check cache inside singleflight (double-checked locking pattern)
+        rechecked = await cache.get_current_weather(best.lat, best.lon)
+        if rechecked:
+            return rechecked
 
-    if point is None:
-        try:
-            point = await openmeteo_client.fetch_current(best.lat, best.lon)
-            point.location_name = location_display
-        except Exception as e:
-            logger.error("Weather fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
-            return json.dumps({"error": f"Weather data unavailable for {location}. {e}"})
+        # Step 3: Fetch current weather (GFS NWP Zarr primary for India, Open-Meteo fallback)
+        point = None
+        from app.data_sources.gfs import gfs_client
 
-    logger.info(
-        "Current weather for %s: %.1f°C, %s",
-        location_display,
-        point.temperature_c or 0,
-        point.weather_description,
-    )
+        if gfs_client.has_data_for(best.lat, best.lon):
+            try:
+                logger.info("Extracting current weather from NOAA GFS 0.25° Zarr store for %s", location_display)
+                point = await gfs_client.fetch_current(best.lat, best.lon)
+                point.location_name = location_display
+            except Exception as e:
+                logger.warning("GFS Zarr extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
 
-    data_json = point.model_dump_json(exclude_none=True)
+        if point is None:
+            try:
+                point = await openmeteo_client.fetch_current(best.lat, best.lon)
+                point.location_name = location_display
+            except Exception as e:
+                logger.error("Weather fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
+                return json.dumps({"error": f"Weather data unavailable for {location}. {e}"})
 
-    # Step 4: Write to cache
-    await cache.set_current_weather(best.lat, best.lon, data_json)
+        logger.info(
+            "Current weather for %s: %.1f°C, %s",
+            location_display,
+            point.temperature_c or 0,
+            point.weather_description,
+        )
 
-    # Return as JSON string for LLM consumption
-    return data_json
+        data_json = point.model_dump_json(exclude_none=True)
+
+        # Step 4: Write to cache
+        await cache.set_current_weather(best.lat, best.lon, data_json)
+        return data_json
+
+    return await single_flight.execute(flight_key, _fetch_and_cache)

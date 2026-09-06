@@ -125,3 +125,55 @@ async def retry_async(
     if last_exc:
         raise last_exc
     raise RuntimeError(f"Operation '{operation_name}' failed with unknown state.")
+
+
+class SingleFlight:
+    """Async single-flight coordinator (request coalescer).
+
+    Prevents cache stampedes (dogpiling) by ensuring that multiple concurrent
+    calls for the same key execute the underlying fetch only once.
+    All concurrent callers await and receive the same shared result.
+    """
+
+    def __init__(self) -> None:
+        self._in_flight: dict[str, asyncio.Future[Any]] = {}
+        self._lock = asyncio.Lock()
+
+    async def execute(
+        self,
+        key: str,
+        coro_fn: Callable[..., Coroutine[Any, Any, T]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> T:
+        """Execute coro_fn once for the given key among concurrent callers.
+
+        If another task is already executing for `key`, await its result instead
+        of duplicating the upstream work.
+        """
+        async with self._lock:
+            if key in self._in_flight:
+                future = self._in_flight[key]
+                return await asyncio.shield(future)
+
+            loop = asyncio.get_running_loop()
+            future: asyncio.Future[Any] = loop.create_future()
+            self._in_flight[key] = future
+
+        try:
+            result = await coro_fn(*args, **kwargs)
+            if not future.done():
+                future.set_result(result)
+            return result
+        except BaseException as exc:
+            if not future.done():
+                future.set_exception(exc)
+            raise
+        finally:
+            async with self._lock:
+                self._in_flight.pop(key, None)
+
+
+# Global singleton instance
+single_flight = SingleFlight()
+

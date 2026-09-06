@@ -8,6 +8,7 @@ Checks Redis cache first (TTL 1h), then Open-Meteo fallback.
 import json
 import logging
 
+from app.core.resilience import single_flight
 from app.database.redis_cache import cache
 from app.data_sources.openmeteo import openmeteo_client
 from app.tools.location_resolver import resolve_location
@@ -63,36 +64,44 @@ async def get_forecast(location: str, days: int = 5, include_hourly: bool = Fals
 
     logger.debug("Cache MISS for forecast at %s (%.4f, %.4f, days=%d)", location_display, best.lat, best.lon, days)
 
-    # Step 3: Fetch forecast (GFS NWP Zarr primary for India, Open-Meteo fallback)
-    timeline = None
-    from app.data_sources.gfs import gfs_client
+    flight_key = f"weather:forecast:{round(best.lat, 2):.2f}:{round(best.lon, 2):.2f}:{days}:{include_hourly}"
 
-    if gfs_client.has_data_for(best.lat, best.lon):
-        try:
-            logger.info("Extracting forecast from NOAA GFS 0.25° Zarr store for %s", location_display)
-            timeline = await gfs_client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
-            timeline.location_name = location_display
-        except Exception as e:
-            logger.warning("GFS Zarr forecast extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
+    async def _fetch_and_cache() -> str:
+        # Re-check cache inside singleflight (double-checked locking pattern)
+        rechecked = await cache.get_forecast(best.lat, best.lon, days)
+        if rechecked:
+            return rechecked
 
-    if timeline is None:
-        try:
-            timeline = await openmeteo_client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
-            timeline.location_name = location_display
-        except Exception as e:
-            logger.error("Forecast fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
-            return json.dumps({"error": f"Forecast data unavailable for {location}. {e}"})
+        # Step 3: Fetch forecast (GFS NWP Zarr primary for India, Open-Meteo fallback)
+        timeline = None
+        from app.data_sources.gfs import gfs_client
 
-    logger.info(
-        "Forecast for %s: %d days retrieved",
-        location_display,
-        len(timeline.daily),
-    )
+        if gfs_client.has_data_for(best.lat, best.lon):
+            try:
+                logger.info("Extracting forecast from NOAA GFS 0.25° Zarr store for %s", location_display)
+                timeline = await gfs_client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
+                timeline.location_name = location_display
+            except Exception as e:
+                logger.warning("GFS Zarr forecast extraction failed for %s (%s), falling back to Open-Meteo", location_display, e)
 
-    data_json = timeline.model_dump_json(exclude_none=True)
+        if timeline is None:
+            try:
+                timeline = await openmeteo_client.fetch_forecast(best.lat, best.lon, days=days, include_hourly=include_hourly)
+                timeline.location_name = location_display
+            except Exception as e:
+                logger.error("Forecast fetch failed for %s (%.4f, %.4f): %s", location, best.lat, best.lon, e)
+                return json.dumps({"error": f"Forecast data unavailable for {location}. {e}"})
 
-    # Step 4: Write to cache
-    await cache.set_forecast(best.lat, best.lon, days, data_json)
+        logger.info(
+            "Forecast for %s: %d days retrieved",
+            location_display,
+            len(timeline.daily),
+        )
 
-    # Return as JSON string for LLM consumption
-    return data_json
+        data_json = timeline.model_dump_json(exclude_none=True)
+
+        # Step 4: Write to cache
+        await cache.set_forecast(best.lat, best.lon, days, data_json)
+        return data_json
+
+    return await single_flight.execute(flight_key, _fetch_and_cache)
