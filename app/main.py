@@ -50,7 +50,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("🛑 WeatherGPT shutting down")
+    from app.data_sources.openmeteo import openmeteo_client
     from app.database import cache, close_db
+    from app.external_services.bhashini import bhashini_service
     from app.ingestion_pipelines.sachet_poller import sachet_poller
 
     try:
@@ -72,6 +74,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await sachet_poller.close()
     except Exception as exc:
         logger.debug("Error closing SACHET poller: %s", exc)
+
+    try:
+        await openmeteo_client.close()
+    except Exception as exc:
+        logger.debug("Error closing Open-Meteo client: %s", exc)
+
+    try:
+        await bhashini_service.close()
+    except Exception as exc:
+        logger.debug("Error closing Bhashini service: %s", exc)
 
 
 # ---------------------------------------------------------------------------

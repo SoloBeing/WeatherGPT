@@ -447,6 +447,10 @@ class BhashiniService:
             logger.error("gTTS fallback also failed: %s", e2)
             raise BhashiniError(f"All TTS methods failed. Bhashini + gTTS: {e2}") from e2
 
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        await self._client.aclose()
+
 
 # ---------------------------------------------------------------------------
 # Shared singleton instance
