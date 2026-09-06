@@ -30,23 +30,21 @@ Every number comes from a deterministic service. This boundary is sacred.
 - **Voice + Translation:** Bhashini (ULCA) APIs
 - **Deploy:** Docker Compose → K8s
 
-## Project Structure (Development Names)
+## Project Structure (Production Layout)
 
 ```
 app/
-├── api_gateway/              → routes, deps
-├── llm_orchestrator/         → intent classifier, tool dispatch, templates
-├── weather_tools/            → get_current, get_forecast, get_alerts, get_climatology, get_advisory, location_resolver
+├── api/                      → FastAPI routes (chat, voice, websocket, alerts, weather) & deps
+├── core/                     → intent classifier, tool dispatch, response templates
+├── tools/                    → get_current, get_forecast, get_alerts, get_climatology, get_advisory, location_resolver
 ├── data_sources/             → Open-Meteo, IMD, GFS, ECMWF, ERA5 (all → ForecastPoint)
-├── schemas_and_models/       → Pydantic schemas + SQLAlchemy ORM
-├── database/                 → async session + Redis client
-├── ingestion_pipelines/      → GFS pipeline, SACHET poller, WIS2 subscriber, scheduler
-├── external_services/        → Bhashini, FCM
+├── models/                   → Pydantic schemas + SQLAlchemy ORM models
+├── database/                 → async session + Redis client, MinIO Zarr storage
+├── pipelines/                → GFS pipeline, SACHET poller, WIS2 subscriber, scheduler
+├── services/                 → Bhashini, FCM
 ├── config.py                 → pydantic-settings, UPPER_CASE fields
 └── main.py                   → FastAPI entry point
 ```
-
-These verbose names will be shortened before shipping (api_gateway→api, llm_orchestrator→core, etc.).
 
 ## Data Sources
 
@@ -108,82 +106,66 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 
 ## Current State (updated each session)
 
-**Last session:** Dev Session 03 (2026-09-06)  
+**Last session:** Dev Session 04 (2026-09-06)  
 **What exists:**
 - ✅ **POST /chat** works end-to-end with Open-Meteo forecasts and SACHET/IMD active disaster alerts
 - ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR → NMT → LLM → NMT → TTS → Audio
 - ✅ **GET /voice/languages** — returns 23 supported language codes
-- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch`, `VoiceChatResponse` schemas
-- ✅ **SQLAlchemy ORM Models** (`ForecastCycle`, `Alert`, `UserLocation`, `Gazetteer`, `Observation`) with GeoAlchemy2 PostGIS types and TimescaleDB hypertable target in `app/schemas_and_models/db_models.py` and `app/schemas_and_models/orm.py`
+- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch`, `VoiceChatResponse` schemas in `app/models/schemas.py`
+- ✅ **SQLAlchemy ORM Models** (`ForecastCycle`, `Alert`, `UserLocation`, `Gazetteer`, `Observation`) with GeoAlchemy2 PostGIS types and TimescaleDB hypertable target in `app/models/db_models.py` and `app/models/orm.py`
 - ✅ **Alembic async migrations** configured in `alembic.ini` and `alembic/env.py` with initial migration `0001_initial_schema.py` supporting `postgis`, `pg_trgm`, and `timescaledb`
 - ✅ **MinIO / local Zarr storage layer** (`app/database/minio_client.py`) with automatic partitioning and chunking for millisecond spatial slicing
-- ✅ **GFS GRIB2 Ingestion Pipeline** (`app/ingestion_pipelines/gfs_pipeline.py`) fetching NOAA GFS 0.25° models via `Herbie`, subsetting to India bounding box (6°-38°N, 68°-98°E), decoding via `cfgrib`/`xarray`, deriving 12 meteorological variables, and persisting to Zarr
-- ✅ **APScheduler background jobs** (`app/ingestion_pipelines/scheduler.py`) running 4x daily GFS ingest (03:30, 09:30, 15:30, 21:30 UTC), 60s SACHET alert feed polling, and precomputing forecasts for 18 key Indian state capitals and metropolitan hubs into Redis
+- ✅ **GFS GRIB2 Ingestion Pipeline** (`app/pipelines/gfs_pipeline.py`) fetching NOAA GFS 0.25° models via `Herbie`, subsetting to India bounding box (6°-38°N, 68°-98°E), decoding via `cfgrib`/`xarray`, deriving 12 meteorological variables, and persisting to Zarr
+- ✅ **APScheduler background jobs** (`app/pipelines/scheduler.py`) running 4x daily GFS ingest (03:30, 09:30, 15:30, 21:30 UTC), 60s SACHET alert feed polling, and precomputing forecasts for 18 key Indian state capitals and metropolitan hubs into Redis
 - ✅ **GFS data source reader** (`app/data_sources/gfs.py`) and weather tool integration with automatic GFS Zarr primary and Open-Meteo fallback
 - ✅ Open-Meteo client (`fetch_current` + `fetch_forecast` with 15 daily & 8 hourly params)
-- ✅ SACHET CAP-XML Poller & active alert registry with spatial polygon and district/state matching
-- ✅ Location resolver (Open-Meteo geocoding + 36 Indian States/UTs Gazetteer)
-- ✅ `get_current_weather`, `get_forecast`, `get_alerts` tools with Redis cache-aside
-- ✅ Redis cache client (`database/redis_cache.py`) with fail-open fallback
-- ✅ WebSocket live alert streaming (`api_gateway/routes/websocket.py` on `/ws/alerts`)
-- ✅ FCM push notification service (`external_services/fcm.py`) with severity topic dispatch
-- ✅ Bhashini ULCA client (`external_services/bhashini.py`) — ASR, NMT, TTS with pipeline config caching
+- ✅ SACHET CAP-XML Poller & active alert registry with spatial polygon and district/state matching in `app/pipelines/sachet_poller.py`
+- ✅ Location resolver (Open-Meteo geocoding + 36 Indian States/UTs Gazetteer) in `app/tools/location_resolver.py`
+- ✅ `get_current_weather`, `get_forecast`, `get_alerts` tools with Redis cache-aside in `app/tools/`
+- ✅ Redis cache client (`app/database/redis_cache.py`) with fail-open fallback
+- ✅ WebSocket live alert streaming (`app/api/routes/websocket.py` on `/ws/alerts`)
+- ✅ FCM push notification service (`app/services/fcm.py`) with severity topic dispatch
+- ✅ Bhashini ULCA client (`app/services/bhashini.py`) — ASR, NMT, TTS with pipeline config caching
 - ✅ Groq Whisper ASR fallback + gTTS TTS fallback (graceful degradation)
-- ✅ LLM orchestrator (litellm tool-calling loop, multi-turn conversation session history)
-- ✅ Response templates — 6 languages: English, Hindi, Tamil, Telugu, Bengali, Marathi (verified native-script)
-- ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health with subsystem reporting
+- ✅ LLM orchestrator (`app/core/router.py`) with litellm tool-calling loop, multi-turn conversation session history
+- ✅ Response templates — 6 languages: English, Hindi, Tamil, Telugu, Bengali, Marathi (`app/core/templates.py`)
+- ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health with subsystem reporting in `app/api/`
 - ✅ **Dev Session 01 (`tests/test_session_06.py`)** — Standardized on pytest + pytest-asyncio, decoupled weather tools test via `synthetic_gfs_cycle` fixture, eliminated dead imports and magic coordinates, resolved brittle geocoding and hardcoded dates.
 - ✅ **Dev Session 02 (`alembic/`)** — Migration infrastructure audit: protected side-effect registrations (`geoalchemy2` & `db_models`) with `# noqa: F401` against linter auto-stripping, condensed boilerplate template docstrings in `alembic/env.py`, and verified `script.py.mako` templating.
 - ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, wired clean shutdown handlers for HTTP clients (`BhashiniService`, `openmeteo_client`) and background pools, guarded audio uploads and Zarr dataset file handles with `try...finally`, enabled Zarr format 3 compliance (`consolidated=False`), and configured strict warning-free pytest filters (`error` default with third-party ignores).
+- ✅ **Dev Session 04 (`app/` production layout)** — Shortened development scaffolding module names to production hierarchy (`app/api/`, `app/core/`, `app/tools/`, `app/models/`, `app/pipelines/`, `app/services/`), migrated all imports across application, Alembic, and tests, aligned subpackage documentation, and verified 100% test pass rate with 0 warnings.
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Dev Session 03 Summary (`dev-logs/03-dev-session/summary.md`)
+## Dev Session 04 Summary (`dev-logs/04-dev-session/summary.md`)
 
-- **Focus:** App core lifecycle modernization, shutdown safety, file descriptor resource guards, and warning hygiene.
+- **Focus:** Shorten verbose scaffolding names to clean production package hierarchy (`api`, `core`, `tools`, `models`, `pipelines`, `services`), migrate all import paths, and update subpackage documentation.
 - **Commits:**
-  - `8ac5b16`: `refactor(core): replace deprecated on_event with async lifespan context manager`
-  - `6d0e12c`: `feat(services): add clean shutdown hooks for HTTP clients and services in lifespan`
-  - `a2f2fd9`: `fix(voice): protect audio file descriptor lifecycle with try-finally cleanup`
-  - `b7a66ad`: `fix(grid): guard Zarr dataset file handles with try-finally closing`
-  - `dd9bece`: `fix(storage): enforce consolidated=False in Zarr storage for format 3 compliance`
-  - `cd8bbb4`: `test(zarr): add dataset handle closing in test_zarr_storage_roundtrip finally block`
-  - `dd1f2a1`: `test(config): configure strict filterwarnings to ignore upstream deprecations`
-  - `9214717`: `docs(dev-session): complete Dev Session 03 app core and lifespan audit`
-  - `6de1bec`: `docs: add immediate pytest verification rule to GEMINI.md`
+  - `cb175a5`: `refactor(models): rename app/schemas_and_models to app/models and update imports`
+  - `f81fcd4`: `refactor(tools): rename app/weather_tools to app/tools and update imports`
+  - `b210af4`: `refactor(services): rename app/external_services to app/services and update imports`
+  - `8209dd1`: `refactor(pipelines): rename app/ingestion_pipelines to app/pipelines and update imports`
+  - `42f30ae`: `refactor(core): rename app/llm_orchestrator to app/core and update imports`
+  - `70a09fb`: `refactor(api): rename app/api_gateway to app/api and update imports`
+  - `9f46590`: `docs(modules): update subpackage GEMINI.md references to production layout`
 - **Result:** 6/6 tests passing with 0 warnings under strict `-W error` enforcement.
 
-## What to Build Next: Dev Session 04 (Architecture & Module Naming Polish)
+## What to Build Next: Dev Session 05 (Robustness & Data Source Fault Tolerance)
 
 Session 07 (Docker Compose, K8s manifests, final shipping) remains on hold to prioritize codebase refactoring and maintainability.
 
-### Dev Session 04 Scope:
-1. **Module & Directory Shortening (from Dev Scaffolding to Production Layout):**
-   - Rename directories under `app/`:
-     - `app/api_gateway/` → `app/api/`
-     - `app/llm_orchestrator/` → `app/core/`
-     - `app/weather_tools/` → `app/tools/`
-     - `app/schemas_and_models/` → `app/models/`
-     - `app/ingestion_pipelines/` → `app/pipelines/`
-     - `app/external_services/` → `app/services/`
-2. **Import Path Migration:**
-   - Update all import paths cleanly across `app/`, `tests/`, and `alembic/`.
-   - Update `app/main.py` route inclusions and middleware references.
-   - Update Alembic `env.py` side-effect target model import (`app.models.db_models`).
-3. **Verification & Testing Invariant:**
-   - Run `uv run pytest` immediately after directory renaming and import updates.
-   - Verify that all endpoints, tools, pipelines, and ORM registrations work identically.
-   - Write `dev-logs/04-dev-session/summary.md` with full atomic commit log.
-
-### Subsequent Dev Sessions:
-- **Dev Session 05: Robustness & Data Source Fault Tolerance**
-  - Exponential backoff and typed error handling for GFS and Open-Meteo.
-  - Zarr store directory validation (`gfs_*`).
-  - Mock fixtures for offline test reproducibility.
-- **Dev Session 06: Scalability & Performance Auditing**
-  - Spatial point-slicing caching / persistent dataset handles.
-  - TimescaleDB query plans & spatial GiST indexing verification.
-  - Precomputation warming expansion.
+### Dev Session 05 Scope:
+1. **Exponential Backoff & Retries:**
+   - Implement resilient HTTP retry logic with jittered exponential backoff for Open-Meteo and Bhashini API calls.
+   - Robust error classification (network timeout vs HTTP 4xx/5xx vs rate limit).
+2. **Data Source Validation & Storage Hardening:**
+   - Zarr store directory validation and corruption guardrails (`gfs_*`).
+   - Graceful fallback paths when external data providers are degraded.
+3. **Offline Test Fixtures:**
+   - Mock fixtures for deterministic, offline testing of Open-Meteo, Bhashini, and FCM endpoints.
+4. **Verification & Testing Invariant:**
+   - Run `uv run pytest` after every single fix and commit atomically.
+   - Author comprehensive summary in `dev-logs/05-dev-session/summary.md`.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06)
 
@@ -198,8 +180,9 @@ Session 07 (Docker Compose, K8s manifests, final shipping) remains on hold to pr
 | — | **Dev-01** | ✅ Test Suite Polish (`test_session_06.py`), pytest runner, decoupling | Refactor |
 | — | **Dev-02** | ✅ Alembic Migration Audit (`env.py`, F401 protection, docstrings) | Maintainability |
 | — | **Dev-03** | ✅ App Core & Lifespan Audit (`app/`, `try...finally`, warning hygiene) | Maintainability |
-| — | **Dev-04** | ⏳ Architecture & Module Naming Polish (`api`, `core`, `tools`, `models`) | Maintainability |
-| — | **Dev-05+** | Robustness & Data Source Fault Tolerance, Performance Auditing | Maintainability |
+| — | **Dev-04** | ✅ Architecture & Module Naming Polish (`api`, `core`, `tools`, `models`) | Maintainability |
+| — | **Dev-05** | ⏳ Robustness & Data Source Fault Tolerance (Backoff, Retries, Offline) | Maintainability |
+| — | **Dev-06+** | Scalability & Performance Auditing | Maintainability |
 | 7 (Sep 06) | 07 | *[On Hold]* Docker Compose, polish, demo prep, final tests | Ship |
 
 
