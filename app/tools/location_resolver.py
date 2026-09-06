@@ -18,13 +18,14 @@ from typing import Optional
 
 import httpx
 
+from app.core.resilience import classify_http_error, retry_async
 from app.models.schemas import LocationMatch
 
 logger = logging.getLogger(__name__)
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
-# Common Indian States and Union Territories gazetteer
+# Common Indian States, Union Territories, and Major Cities gazetteer
 INDIAN_STATES_GAZETTEER: dict[str, tuple[float, float, str]] = {
     "andaman and nicobar": (11.74, 92.65, "Andaman and Nicobar Islands"),
     "andhra pradesh": (15.91, 79.74, "Andhra Pradesh"),
@@ -62,6 +63,38 @@ INDIAN_STATES_GAZETTEER: dict[str, tuple[float, float, str]] = {
     "uttar pradesh": (26.84, 80.94, "Uttar Pradesh"),
     "uttarakhand": (30.06, 79.01, "Uttarakhand"),
     "west bengal": (22.98, 87.85, "West Bengal"),
+    # Top Indian Metropolitan Hubs & Key Cities
+    "mumbai": (19.0760, 72.8777, "Mumbai"),
+    "bombay": (19.0760, 72.8777, "Mumbai"),
+    "bengaluru": (12.9716, 77.5946, "Bengaluru"),
+    "bangalore": (12.9716, 77.5946, "Bengaluru"),
+    "kolkata": (22.5726, 88.3639, "Kolkata"),
+    "calcutta": (22.5726, 88.3639, "Kolkata"),
+    "chennai": (13.0827, 80.2707, "Chennai"),
+    "madras": (13.0827, 80.2707, "Chennai"),
+    "hyderabad": (17.3850, 78.4867, "Hyderabad"),
+    "ahmedabad": (23.0225, 72.5714, "Ahmedabad"),
+    "pune": (18.5204, 73.8567, "Pune"),
+    "jaipur": (26.9124, 75.7873, "Jaipur"),
+    "lucknow": (26.8467, 80.9462, "Lucknow"),
+    "patna": (25.5941, 85.1376, "Patna"),
+    "bhopal": (23.2599, 77.4126, "Bhopal"),
+    "bhubaneswar": (20.2961, 85.8245, "Bhubaneswar"),
+    "thiruvananthapuram": (8.5241, 76.9366, "Thiruvananthapuram"),
+    "trivandrum": (8.5241, 76.9366, "Thiruvananthapuram"),
+    "guwahati": (26.1445, 91.7362, "Guwahati"),
+    "srinagar": (34.0837, 74.7973, "Srinagar"),
+    "shimla": (31.1048, 77.1734, "Shimla"),
+    "dehradun": (30.3165, 78.0322, "Dehradun"),
+    "ranchi": (23.3441, 85.3096, "Ranchi"),
+    "raipur": (21.2514, 81.6296, "Raipur"),
+    "panaji": (15.4909, 73.8278, "Panaji"),
+    "surat": (21.1702, 72.8311, "Surat"),
+    "kanpur": (26.4499, 80.3319, "Kanpur"),
+    "nagpur": (21.1458, 79.0882, "Nagpur"),
+    "indore": (22.7196, 75.8577, "Indore"),
+    "varanasi": (25.3176, 82.9739, "Varanasi"),
+    "banaras": (25.3176, 82.9739, "Varanasi"),
 }
 
 
@@ -109,12 +142,43 @@ async def resolve_location(
     if country_code:
         params["country_code"] = country_code
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(GEOCODING_URL, params=params)
-        resp.raise_for_status()
-        data = resp.json()
+    async def _fetch_geocoding() -> dict:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(GEOCODING_URL, params=params)
+            resp.raise_for_status()
+            return resp.json()
 
-    results = data.get("results", [])
+    try:
+        data = await retry_async(
+            _fetch_geocoding,
+            max_retries=2,
+            base_delay=0.3,
+            max_delay=2.0,
+            operation_name=f"Geocoding '{name}'",
+        )
+        results = data.get("results", [])
+    except Exception as exc:
+        logger.warning(
+            "Geocoding service unavailable for '%s': %s. Attempting offline fallback.",
+            name,
+            classify_http_error(exc),
+        )
+        # Offline substring fallback against built-in gazetteer
+        for key, (lat, lon, place_name) in INDIAN_STATES_GAZETTEER.items():
+            if key in clean_name or clean_name in key:
+                logger.info("Fallback gazetteer hit for '%s' -> %s", name, place_name)
+                return [
+                    LocationMatch(
+                        name=place_name,
+                        lat=lat,
+                        lon=lon,
+                        country="India",
+                        country_code="IN",
+                        admin1=place_name,
+                        confidence=0.8,
+                    )
+                ]
+        return []
     if not results:
         logger.warning("Geocoding returned no results for: %s", name)
         return []
