@@ -129,6 +129,7 @@ These verbose names will be shortened before shipping (api_gateway→api, llm_or
 - ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health with subsystem reporting
 - ✅ **Dev Session 01 (`tests/test_session_06.py`)** — Standardized on pytest + pytest-asyncio, decoupled weather tools test via `synthetic_gfs_cycle` fixture, eliminated dead imports and magic coordinates, resolved brittle geocoding and hardcoded dates.
 - ✅ **Dev Session 02 (`alembic/`)** — Migration infrastructure audit: protected side-effect registrations (`geoalchemy2` & `db_models`) with `# noqa: F401` against linter auto-stripping, condensed boilerplate template docstrings in `alembic/env.py`, and verified `script.py.mako` templating.
+- ✅ **Dev Session 03 (`app/` core & lifespan)** — Modernized FastAPI lifecycle with async `lifespan` context manager, wired clean shutdown handlers for HTTP clients (`BhashiniService`, `openmeteo_client`) and background pools, guarded audio uploads and Zarr dataset file handles with `try...finally`, enabled Zarr format 3 compliance (`consolidated=False`), and configured strict warning-free pytest filters.
 - **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
@@ -138,12 +139,7 @@ Session 07 (Docker Compose, K8s manifests, final shipping) is held until further
 
 ### Upcoming Dev Sessions Focus:
 
-1. **Dev Session 03: App Core & Lifespan Audit (`app/`)**
-   - Replace deprecated `@app.on_event("startup")` and `@app.on_event("shutdown")` with modern async `lifespan` context manager.
-   - Clean shutdown handlers for background workers, schedulers, redis pools, and async HTTP clients.
-   - Silence third-party deprecation warnings (Starlette `TestClient` / `httpx2`, Zarr v3 consolidated metadata flag).
-
-2. **Dev Session 04: Architecture & Module Naming Polish**
+1. **Dev Session 04: Architecture & Module Naming Polish**
    - Execute planned verbose name shortening from development scaffold:
      - `api_gateway/` → `api/`
      - `llm_orchestrator/` → `core/`
@@ -153,12 +149,12 @@ Session 07 (Docker Compose, K8s manifests, final shipping) is held until further
      - `external_services/` → `services/`
    - Update all import paths cleanly across `app/`, `tests/`, and `alembic/`.
 
-3. **Dev Session 05: Robustness & Data Source Fault Tolerance**
+2. **Dev Session 05: Robustness & Data Source Fault Tolerance**
    - Enhance resilience for GFS and Open-Meteo clients (exponential backoff, circuit breaking, typed exceptions).
    - Ensure Zarr store index listing filters strictly for valid model cycles (`gfs_*`) to prevent uninitialized directory collisions.
    - Add comprehensive mock fixtures in tests for offline test reproducibility across all test suites (Sessions 02–05).
 
-4. **Dev Session 06: Scalability & Performance Auditing**
+3. **Dev Session 06: Scalability & Performance Auditing**
    - Optimize spatial point-slicing in `GFSClient` with persistent dataset handles or caching open stores.
    - Validate TimescaleDB hypertable query plans and PostGIS spatial indexing (`gist(geom)`).
    - Expand Redis precomputation strategies for top meteorological queries and alert lookups.
@@ -175,7 +171,8 @@ Session 07 (Docker Compose, K8s manifests, final shipping) is held until further
 | 6 (Sep 05) | 06 | ✅ GFS/Zarr ingestion pipeline + DB models + Alembic | P4: meteorological score |
 | — | **Dev-01** | ✅ Test Suite Polish (`test_session_06.py`), pytest runner, decoupling | Refactor |
 | — | **Dev-02** | ✅ Alembic Migration Audit (`env.py`, F401 protection, docstrings) | Maintainability |
-| — | **Dev-03+** | Codebase Polish: `app/` Lifespan, Directory Simplification, Fault Tolerance | Maintainability |
+| — | **Dev-03** | ✅ App Core & Lifespan Audit (`app/`, `try...finally`, warning hygiene) | Maintainability |
+| — | **Dev-04+** | Codebase Polish: Architecture & Module Naming Polish, Fault Tolerance | Maintainability |
 | 7 (Sep 06) | 07 | *[On Hold]* Docker Compose, polish, demo prep, final tests | Ship |
 
 
