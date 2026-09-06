@@ -130,7 +130,7 @@ class MinioZarrStorage:
         store_path = target_dir / f"{cycle_key}.zarr"
 
         # Write to local Zarr store
-        ds.to_zarr(store_path, mode="w")
+        ds.to_zarr(store_path, mode="w", consolidated=False)
         logger.info(f"Successfully saved Zarr store at: {store_path}")
 
         # If MinIO is reachable, sync objects to MinIO bucket
@@ -163,7 +163,7 @@ class MinioZarrStorage:
                 _, rel_path = parts
                 local_fallback = LOCAL_ZARR_BASE / rel_path
                 if local_fallback.exists():
-                    return xr.open_zarr(local_fallback)
+                    return xr.open_zarr(local_fallback, consolidated=False)
             # If MinIO is available and s3fs is present
             if self.is_available():
                 s3_endpoint = f"http://{self.endpoint}" if not self.secure else f"https://{self.endpoint}"
@@ -172,9 +172,9 @@ class MinioZarrStorage:
                     "secret": self.secret_key,
                     "client_kwargs": {"endpoint_url": s3_endpoint},
                 }
-                return xr.open_zarr(store_path, storage_options=storage_options)
+                return xr.open_zarr(store_path, storage_options=storage_options, consolidated=False)
 
-        return xr.open_zarr(store_path)
+        return xr.open_zarr(store_path, consolidated=False)
 
     def list_saved_cycles(self, subfolder: str = "gfs") -> list[str]:
         """List all available stored cycle keys."""
