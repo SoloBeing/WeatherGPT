@@ -265,3 +265,66 @@ async def test_fcm_alert_broadcasting():
     sample_alert.severity = "Severe"
     msg_id_severe = await fcm.push_alert(sample_alert)
     assert msg_id_severe.startswith("mock-fcm-")
+
+
+@pytest.mark.asyncio
+async def test_sachet_json_parsing_and_expiry_filtering():
+    """Verify live SACHET NDMA JSON format parsing and strict expiry filtering."""
+    from app.pipelines.sachet_poller import parse_sachet_json, SachetPoller
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    future_time = now + timedelta(hours=6)
+    past_time = now - timedelta(hours=6)
+
+    raw_json = [
+        {
+            "identifier": "1001",
+            "disaster_type": "Thunderstorm with Lightning",
+            "severity": "WATCH",
+            "severity_color": "yellow",
+            "severity_level": "Likely",
+            "effective_start_time": now.strftime("%a %b %d %H:%M:%S UTC %Y"),
+            "effective_end_time": future_time.strftime("%a %b %d %H:%M:%S UTC %Y"),
+            "area_description": "Kota, Baran districts of Rajasthan",
+            "warning_message": "Thunderstorm with lightning likely over Kota.",
+            "centroid": "75.83,25.18",
+            "alert_source": "IMD Jaipur",
+        },
+        {
+            "identifier": "1002",
+            "disaster_type": "Heat Wave",
+            "severity": "WARNING",
+            "severity_color": "red",
+            "severity_level": "Observed",
+            "effective_start_time": (past_time - timedelta(hours=12)).strftime("%a %b %d %H:%M:%S UTC %Y"),
+            "effective_end_time": past_time.strftime("%a %b %d %H:%M:%S UTC %Y"),
+            "area_description": "Churu, Bikaner districts of Rajasthan",
+            "warning_message": "Expired heat wave alert.",
+            "centroid": "74.61,28.29",
+            "alert_source": "IMD Jaipur",
+        },
+    ]
+
+    records = parse_sachet_json(raw_json)
+    # The expired alert (1002) must have been filtered out
+    assert len(records) == 1
+    assert records[0].alert_id == "SACHET-1001"
+    assert records[0].event == "Thunderstorm with Lightning"
+    assert records[0].severity == "Moderate"
+    assert records[0].status == "Actual"
+
+    # Verify SachetPoller seed alerts honesty
+    poller = SachetPoller()
+    active = poller.get_all_active()
+    assert len(active) > 0
+    # Sandbox alerts must be honestly tagged as Exercise
+    for a in active:
+        assert a.status == "Exercise"
+        assert "sandbox" in a.source
+
+    # Location lookup should match unexpired sandbox alerts
+    matches = poller.get_alerts_for_location(location_name="Mumbai")
+    assert len(matches) >= 1
+    assert matches[0].status == "Exercise"
+

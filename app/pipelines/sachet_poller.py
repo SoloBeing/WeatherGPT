@@ -8,9 +8,12 @@ Polls every 60 seconds:
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import json
 import logging
+import math
 from typing import Any, Callable, Coroutine, Optional
+import uuid
 import xml.etree.ElementTree as ET
 
 import httpx
@@ -116,6 +119,185 @@ SAMPLE_SACHET_CAP_XML = """<?xml version="1.0" encoding="UTF-8"?>
   </entry>
 </feed>
 """
+
+
+def get_sandbox_sample_alerts() -> list[AlertRecord]:
+    """Generate dynamic sandbox exercise alerts with current timestamps.
+
+    Clearly tagged as status='Exercise' and source='sachet-ndma (sandbox)'
+    so callers know they are simulated test alerts.
+    """
+    now = datetime.now(timezone.utc)
+    return [
+        AlertRecord(
+            alert_id="SACHET-SANDBOX-CY-01",
+            source="sachet-ndma (sandbox)",
+            sender="ndma.gov.in (Sandbox Exercise)",
+            sent_at=now,
+            status="Exercise",
+            msg_type="Alert",
+            event="Severe Cyclonic Storm Exercise",
+            urgency="Immediate",
+            severity="Extreme",
+            certainty="Observed",
+            headline="[SIMULATED EXERCISE] Red Alert: Severe Cyclone Approaching Coastal Odisha",
+            description="[Sandbox Simulation] Deep depression in Bay of Bengal simulated. Wind speeds 90-110 km/h with heavy rainfall in coastal districts.",
+            instruction="[Exercise Advisory] Fishermen advised not to venture into deep sea. Coastal residents in low-lying areas evacuate to shelters.",
+            effective_at=now,
+            expires_at=now + timedelta(days=2),
+            area_desc="Odisha (Puri, Jagatsinghpur, Kendrapara, Bhadrak, Balasore, Ganjam), Andhra Pradesh (Srikakulam, Visakhapatnam)",
+            polygon=[[19.8, 85.8], [20.3, 86.7], [21.5, 87.0], [21.0, 86.0], [19.5, 84.5], [19.8, 85.8]],
+            language="en",
+        ),
+        AlertRecord(
+            alert_id="SACHET-SANDBOX-HR-02",
+            source="sachet-ndma (sandbox)",
+            sender="mausam.imd.gov.in (Sandbox Exercise)",
+            sent_at=now,
+            status="Exercise",
+            msg_type="Alert",
+            event="Heavy Rainfall Simulation",
+            urgency="Expected",
+            severity="Severe",
+            certainty="Likely",
+            headline="[SIMULATED EXERCISE] Orange Alert: Very Heavy Rainfall for Mumbai & Thane",
+            description="[Sandbox Simulation] Active monsoon surge simulated to cause heavy spells of rain (115-204 mm in 24h) with high tide in MMR.",
+            instruction="[Exercise Advisory] Avoid travelling through waterlogged subway routes. Check local transit before departure.",
+            effective_at=now,
+            expires_at=now + timedelta(days=2),
+            area_desc="Maharashtra (Mumbai City, Mumbai Suburban, Thane, Raigad, Palghar)",
+            polygon=[[18.8, 72.7], [19.4, 72.7], [19.4, 73.2], [18.8, 73.2], [18.8, 72.7]],
+            language="en",
+        ),
+        AlertRecord(
+            alert_id="SACHET-SANDBOX-TS-03",
+            source="sachet-ndma (sandbox)",
+            sender="mausam.imd.gov.in (Sandbox Exercise)",
+            sent_at=now,
+            status="Exercise",
+            msg_type="Alert",
+            event="Thunderstorm Exercise",
+            urgency="Expected",
+            severity="Moderate",
+            certainty="Likely",
+            headline="[SIMULATED EXERCISE] Yellow Warning: Thunderstorm with lightning across Delhi NCR",
+            description="[Sandbox Simulation] Convective cloud formation bringing isolated thunderstorms with lightning and gusty winds over Delhi NCR.",
+            instruction="[Exercise Advisory] Do not take shelter under isolated trees during lightning. Unplug sensitive appliances.",
+            effective_at=now,
+            expires_at=now + timedelta(days=1),
+            area_desc="Delhi, Uttar Pradesh (Gautam Buddha Nagar, Ghaziabad), Haryana (Gurugram, Faridabad), Rajasthan (Jaipur, Alwar)",
+            polygon=[[26.5, 75.5], [28.9, 76.8], [28.9, 77.6], [26.5, 76.5], [26.5, 75.5]],
+            language="en",
+        ),
+    ]
+
+
+def _parse_sachet_timestamp(val: Any) -> datetime | None:
+    """Parse timestamps from SACHET NDMA JSON or ISO formats."""
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val
+    s = str(val).strip()
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        pass
+    try:
+        s_clean = s.replace(" IST", " +0530").replace(" UTC", " +0000")
+        return datetime.strptime(s_clean, "%a %b %d %H:%M:%S %z %Y")
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+    return None
+
+
+def parse_sachet_json(data: Any) -> list[AlertRecord]:
+    """Parse live NDMA SACHET JSON alert feed."""
+    if isinstance(data, dict):
+        items = data.get("alerts", [data]) if ("alerts" in data or "identifier" in data) else []
+    elif isinstance(data, list):
+        items = data
+    else:
+        return []
+
+    parsed: list[AlertRecord] = []
+    now = datetime.now(timezone.utc)
+
+    color_severity_map = {
+        "red": "Extreme",
+        "orange": "Severe",
+        "yellow": "Moderate",
+        "green": "Minor",
+    }
+    level_severity_map = {
+        "warning": "Extreme",
+        "alert": "Severe",
+        "watch": "Moderate",
+        "advisory": "Minor",
+    }
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        raw_id = item.get("identifier") or item.get("alert_id_sdma_autoinc") or uuid.uuid4().hex[:8]
+        alert_id = f"SACHET-{raw_id}"
+
+        color = str(item.get("severity_color", "")).lower()
+        sev_str = str(item.get("severity", "")).lower()
+        severity = color_severity_map.get(color) or level_severity_map.get(sev_str) or "Moderate"
+
+        disaster_type = item.get("disaster_type") or "Weather Alert"
+        area_desc = item.get("area_description") or ""
+        warning_msg = item.get("warning_message") or ""
+
+        effective_at = _parse_sachet_timestamp(item.get("effective_start_time")) or now
+        expires_at = _parse_sachet_timestamp(item.get("effective_end_time"))
+        sent_at = effective_at
+
+        # Expiry filtering: skip already expired alerts
+        if expires_at and expires_at < now:
+            continue
+
+        circle_val = None
+        centroid_str = item.get("centroid")
+        if centroid_str and "," in centroid_str:
+            try:
+                lon_part, lat_part = [float(x.strip()) for x in centroid_str.split(",")[:2]]
+                circle_val = f"{lat_part:.4f},{lon_part:.4f} 50.0"
+            except Exception:
+                pass
+
+        sender = item.get("alert_source") or "ndma.gov.in"
+
+        rec = AlertRecord(
+            alert_id=alert_id,
+            source="sachet-ndma",
+            sender=sender,
+            sent_at=sent_at,
+            status="Actual",
+            msg_type="Alert",
+            event=disaster_type,
+            urgency="Immediate" if severity in ("Extreme", "Severe") else "Expected",
+            severity=severity,
+            certainty=item.get("severity_level") or "Likely",
+            headline=f"[{severity.upper()}] {disaster_type} - {area_desc[:60]}",
+            description=warning_msg or f"{disaster_type} reported for {area_desc}",
+            instruction="Follow state disaster management authority guidelines. Exercise caution and stay tuned to local updates.",
+            effective_at=effective_at,
+            expires_at=expires_at,
+            area_desc=area_desc,
+            circle=circle_val,
+            polygon=None,
+            language=item.get("actual_lang") or "en",
+        )
+        parsed.append(rec)
+
+    return parsed
 
 
 def _strip_namespace(tag: str) -> str:
@@ -325,12 +507,12 @@ class SachetPoller:
         self._load_seed_alerts()
 
     def _load_seed_alerts(self) -> None:
-        """Seed registry with initial baseline alerts."""
-        alerts = parse_cap_xml(SAMPLE_SACHET_CAP_XML)
+        """Seed registry with dynamic baseline sandbox alerts."""
+        alerts = get_sandbox_sample_alerts()
         for a in alerts:
             self._active_alerts[a.alert_id] = a
             self._seen_alert_ids.add(a.alert_id)
-        logger.info("Loaded %d baseline SACHET CAP alerts", len(alerts))
+        logger.info("Loaded %d baseline SACHET sandbox alerts", len(alerts))
 
     def register_listener(
         self, callback: Callable[[AlertRecord], Coroutine[Any, Any, None]]
@@ -338,24 +520,44 @@ class SachetPoller:
         """Register async callback for newly detected critical alerts."""
         self._listeners.append(callback)
 
-    async def fetch_feed(self) -> str:
-        """Fetch raw CAP XML from feed endpoint with sample fallback."""
+    async def fetch_feed(self) -> list[AlertRecord]:
+        """Fetch alerts from SACHET NDMA (JSON or CAP XML) with sandbox fallback."""
         try:
             resp = await self._http_client.get(self.feed_url)
-            if resp.status_code == 200 and resp.text.strip().startswith("<"):
-                return resp.text
+            if resp.status_code == 200:
+                raw_text = resp.text.strip()
+                if raw_text.startswith(("[", "{")):
+                    alerts = parse_sachet_json(resp.json())
+                    if alerts:
+                        logger.info("Fetched %d live alerts from SACHET JSON feed", len(alerts))
+                        return alerts
+                elif raw_text.startswith("<"):
+                    alerts = parse_cap_xml(raw_text)
+                    if alerts:
+                        logger.info("Fetched %d live alerts from SACHET CAP XML feed", len(alerts))
+                        return alerts
         except Exception as e:
             logger.debug("SACHET live endpoint unreachable (%s), using active alert registry", e)
 
-        return SAMPLE_SACHET_CAP_XML
+        return get_sandbox_sample_alerts()
 
     async def poll_once(self) -> list[AlertRecord]:
-        """Poll feed once, update active alerts, and trigger notification listeners."""
-        xml_content = await self.fetch_feed()
-        parsed_alerts = parse_cap_xml(xml_content)
+        """Poll feed once, prune expired alerts, update active alerts, and trigger notification listeners."""
+        parsed_alerts = await self.fetch_feed()
+
+        now = datetime.now(timezone.utc)
+        # Prune expired alerts from registry
+        self._active_alerts = {
+            aid: a for aid, a in self._active_alerts.items()
+            if a.expires_at is None or a.expires_at >= now
+        }
 
         new_alerts: list[AlertRecord] = []
         for alert in parsed_alerts:
+            # Skip if already expired
+            if alert.expires_at and alert.expires_at < now:
+                continue
+
             self._active_alerts[alert.alert_id] = alert
             if alert.alert_id not in self._seen_alert_ids:
                 self._seen_alert_ids.add(alert.alert_id)
@@ -370,11 +572,15 @@ class SachetPoller:
                             logger.error("Error invoking alert listener: %s", e)
 
         logger.info("SACHET poll complete: %d active alerts, %d new", len(self._active_alerts), len(new_alerts))
-        return parsed_alerts
+        return list(self._active_alerts.values())
 
     def get_all_active(self) -> list[AlertRecord]:
-        """Get all currently active alerts."""
-        return list(self._active_alerts.values())
+        """Get all currently active (unexpired) alerts."""
+        now = datetime.now(timezone.utc)
+        return [
+            a for a in self._active_alerts.values()
+            if a.expires_at is None or a.expires_at >= now
+        ]
 
     def get_alerts_for_location(
         self,
@@ -407,7 +613,8 @@ class SachetPoller:
         if district:
             tokens.append(district.lower().strip())
 
-        for alert in self._active_alerts.values():
+        # Only evaluate unexpired alerts
+        for alert in self.get_all_active():
             if SEVERITY_LEVELS.get(alert.severity, 0) < min_sev_level:
                 continue
 
@@ -417,6 +624,17 @@ class SachetPoller:
             if lat is not None and lon is not None and alert.polygon:
                 if _point_in_polygon(lat, lon, alert.polygon):
                     matched = True
+
+            # 1b. Centroid/circle test if coordinates available
+            if not matched and lat is not None and lon is not None and alert.circle:
+                try:
+                    c_coords, c_rad = alert.circle.split()
+                    c_lat, c_lon = [float(x) for x in c_coords.split(",")]
+                    dist_km = math.hypot((lat - c_lat) * 111.0, (lon - c_lon) * 111.0 * math.cos(math.radians(lat)))
+                    if dist_km <= float(c_rad):
+                        matched = True
+                except Exception:
+                    pass
 
             # 2. Textual district / state name test
             if not matched and alert.area_desc:

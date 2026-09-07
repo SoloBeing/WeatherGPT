@@ -70,8 +70,9 @@ class Settings(BaseSettings):
     # --- IMD ---
     IMD_BASE_URL: str = "https://mausam.imd.gov.in/api"
 
-    # --- SACHET (NDMA CAP Alerts) ---
-    SACHET_FEED_URL: str = "https://sachet.ndma.gov.in/cap_feed"
+    # --- SACHET (NDMA Alerts) ---
+    SACHET_FEED_URL: str = "https://sachet.ndma.gov.in/cap_public_website/FetchAllAlertDetails"
+    SACHET_NOWCAST_URL: str = "https://sachet.ndma.gov.in/cap_public_website/FetchIMDNowcastAlerts"
 
 
 settings = Settings()
