@@ -518,7 +518,17 @@ class SachetPoller:
         self, callback: Callable[[AlertRecord], Coroutine[Any, Any, None]]
     ) -> None:
         """Register async callback for newly detected critical alerts."""
-        self._listeners.append(callback)
+        if callback not in self._listeners:
+            self._listeners.append(callback)
+
+    async def notify_listeners(self, alert: AlertRecord) -> None:
+        """Dispatch alert to all registered async listeners (e.g. WebSocket, FCM)."""
+        if alert.severity in ("Severe", "Extreme"):
+            for listener in self._listeners:
+                try:
+                    await listener(alert)
+                except Exception as e:
+                    logger.error("Error invoking alert listener: %s", e)
 
     async def fetch_feed(self) -> list[AlertRecord]:
         """Fetch alerts from SACHET NDMA (JSON or CAP XML) with sandbox fallback."""
@@ -565,11 +575,7 @@ class SachetPoller:
 
                 # Dispatch severe/extreme alerts to listeners (e.g. WebSocket & FCM)
                 if alert.severity in ("Severe", "Extreme"):
-                    for listener in self._listeners:
-                        try:
-                            asyncio.create_task(listener(alert))
-                        except Exception as e:
-                            logger.error("Error invoking alert listener: %s", e)
+                    asyncio.create_task(self.notify_listeners(alert))
 
         logger.info("SACHET poll complete: %d active alerts, %d new", len(self._active_alerts), len(new_alerts))
         return list(self._active_alerts.values())

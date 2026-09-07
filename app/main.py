@@ -50,6 +50,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.error("Failed to start ingestion scheduler: %s", exc)
 
+    try:
+        from app.pipelines.sachet_poller import sachet_poller
+        from app.services.fcm import fcm_service
+        sachet_poller.register_listener(fcm_service.push_alert)
+        logger.info("Registered FCM proactive alert push listener with SACHET poller")
+    except Exception as exc:
+        logger.error("Failed to register FCM alert push listener: %s", exc)
+
     yield
 
     logger.info("🛑 WeatherGPT shutting down")

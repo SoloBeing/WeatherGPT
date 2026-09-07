@@ -268,6 +268,50 @@ async def test_fcm_alert_broadcasting():
 
 
 @pytest.mark.asyncio
+async def test_fcm_sachet_listener_wiring():
+    """Verify FCM push listener is properly wired and invoked upon critical alert reception."""
+    from app.pipelines.sachet_poller import sachet_poller
+    from app.services.fcm import fcm_service
+
+    # Register listener
+    sachet_poller.register_listener(fcm_service.push_alert)
+    assert fcm_service.push_alert in sachet_poller._listeners
+
+    # Verify idempotency
+    prev_count = len(sachet_poller._listeners)
+    sachet_poller.register_listener(fcm_service.push_alert)
+    assert len(sachet_poller._listeners) == prev_count
+
+    # Fire a critical test alert via _notify_listeners
+    sample_alert = AlertRecord(
+        alert_id="FCM-TEST-WIRE-999",
+        source="sachet-ndma",
+        sender="ndma.gov.in",
+        sent_at=datetime.now(timezone.utc),
+        status="Actual",
+        msg_type="Alert",
+        event="Extreme Flash Flood",
+        urgency="Immediate",
+        severity="Extreme",
+        certainty="Observed",
+        headline="Immediate Evacuation Notice",
+        description="Flash flood warning issued.",
+        instruction="Move to higher ground immediately.",
+        area_desc="Chamoli, Uttarakhand",
+    )
+
+    try:
+        with patch.object(fcm_service, "send_to_topic", wraps=fcm_service.send_to_topic) as mock_send:
+            await sachet_poller.notify_listeners(sample_alert)
+            assert mock_send.called
+            assert mock_send.call_args[1]["topic"] == "weather_alerts_extreme"
+            assert mock_send.call_args[1]["data"]["alert_id"] == "FCM-TEST-WIRE-999"
+    finally:
+        if fcm_service.push_alert in sachet_poller._listeners:
+            sachet_poller._listeners.remove(fcm_service.push_alert)
+
+
+@pytest.mark.asyncio
 async def test_sachet_json_parsing_and_expiry_filtering():
     """Verify live SACHET NDMA JSON format parsing and strict expiry filtering."""
     from app.pipelines.sachet_poller import parse_sachet_json, SachetPoller

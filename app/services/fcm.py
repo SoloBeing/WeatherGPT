@@ -153,6 +153,3 @@ class FCMService:
 # Shared singleton instance
 fcm_service = FCMService()
 
-# Register FCM push listener with SACHET poller for auto-push on new critical alerts
-sachet_poller.register_listener(fcm_service.push_alert)
-
