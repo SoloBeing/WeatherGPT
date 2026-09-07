@@ -327,6 +327,7 @@ async def main_demo(argv: list[str] | None = None) -> int:
         from app.pipelines.sachet_poller import sachet_poller
         from app.data_sources.gfs import gfs_client
         from app.data_sources.incois import incois_client
+        from app.data_sources.aviation import aviation_client
 
         for cleanup_coro in (
             close_geocoder(),
@@ -335,6 +336,7 @@ async def main_demo(argv: list[str] | None = None) -> int:
             sachet_poller.close(),
             gfs_client.close(),
             incois_client.close(),
+            aviation_client.close(),
         ):
             try:
                 await cleanup_coro

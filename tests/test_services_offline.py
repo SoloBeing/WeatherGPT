@@ -361,4 +361,40 @@ async def test_incois_marine_weather_and_pfz():
         await incois_client.close()
 
 
+@pytest.mark.asyncio
+async def test_aviation_metar_weather():
+    """Verify aviation METAR weather retrieval, ICAO resolution, and router dispatch."""
+    import json
+    from app.data_sources.aviation import aviation_client
+    from app.tools.aviation import get_aviation_weather
+    from app.core.router import _TOOL_DISPATCH
+
+    try:
+        # 1. Aerodrome code resolution
+        assert aviation_client.resolve_icao("Delhi") == "VIDP"
+        assert aviation_client.resolve_icao("Mumbai") == "VABB"
+        assert aviation_client.resolve_icao("BLR") == "VOBL"
+        assert aviation_client.resolve_icao("VOBL") == "VOBL"
+
+        # 2. Client METAR extraction
+        metar = await aviation_client.fetch_metar("VIDP")
+        assert metar.icao_code == "VIDP"
+        assert metar.flight_category in ("VFR", "MVFR", "IFR", "LIFR")
+        assert "VIDP" in metar.raw_metar
+        assert metar.temperature_c is not None
+
+        # 3. Tool invocation
+        res_json = await get_aviation_weather("Kempegowda Airport")
+        data = json.loads(res_json)
+        assert data["icao_code"] == "VOBL"
+        assert "flight_category" in data
+        assert "raw_metar" in data
+
+        # 4. Router dispatch registry
+        assert "get_aviation_weather" in _TOOL_DISPATCH
+    finally:
+        await aviation_client.close()
+
+
+
 

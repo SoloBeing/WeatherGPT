@@ -108,6 +108,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.debug("Error closing INCOIS client: %s", exc)
 
+    from app.data_sources.aviation import aviation_client
+
+    try:
+        await aviation_client.close()
+    except Exception as exc:
+        logger.debug("Error closing Aviation client: %s", exc)
+
 
 # ---------------------------------------------------------------------------
 # FastAPI app

@@ -126,6 +126,34 @@ class MarinePoint(BaseModel):
     pfz_advisory: str = Field(..., description="Potential Fishing Zone (PFZ) advisory description")
 
 
+class AviationWeather(BaseModel):
+    """Aviation weather observation (METAR) report.
+
+    Contains flight category, visibility, wind speed/direction, altimeter,
+    cloud cover, and the official raw METAR string.
+    """
+
+    source: str = Field(default="Aviation Weather Center (METAR)", description="Data source identifier")
+    data_quality: Optional[str] = Field("verified", description="Data quality: 'verified' or 'synthetic'")
+    icao_code: str = Field(..., description="4-letter ICAO airport code, e.g. 'VIDP', 'VABB'")
+    station_name: str = Field(..., description="Airport / aerodrome facility name")
+    lat: float
+    lon: float
+    observed_at: datetime = Field(..., description="Timestamp of the METAR observation")
+    flight_category: str = Field(..., description="Flight category: VFR, MVFR, IFR, or LIFR")
+    raw_metar: str = Field(..., description="Standard raw METAR telecommunication code string")
+    temperature_c: Optional[float] = Field(None, description="Air temperature in °C")
+    dewpoint_c: Optional[float] = Field(None, description="Dewpoint temperature in °C")
+    wind_speed_kt: Optional[float] = Field(None, description="Wind speed in knots")
+    wind_direction_deg: Optional[float] = Field(None, description="Wind direction in degrees")
+    wind_gust_kt: Optional[float] = Field(None, description="Wind gusts in knots")
+    visibility_sm: Optional[float] = Field(None, description="Visibility in statute miles")
+    visibility_m: Optional[float] = Field(None, description="Visibility in metres")
+    altimeter_hpa: Optional[float] = Field(None, description="QNH altimeter setting in hPa")
+    cloud_cover: Optional[str] = Field(None, description="Sky cover, e.g. FEW, SCT, BKN, OVC, CLR")
+    weather_phenomena: Optional[str] = Field(None, description="Present weather codes (e.g. HZ, RA, FG, TS)")
+
+
 class LocationMatch(BaseModel):
     """Geocoding result from location resolution."""
 

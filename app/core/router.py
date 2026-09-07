@@ -28,6 +28,7 @@ from app.tools.alerts_tool import get_alerts
 from app.tools.current import get_current_weather
 from app.tools.forecast import get_forecast
 from app.tools.marine import get_marine_weather
+from app.tools.aviation import get_aviation_weather
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +49,21 @@ You are WeatherGPT, a helpful and friendly weather assistant specialising in Ind
    heatwaves, thunderstorms, or emergencies, call `get_alerts`.
 5. When a user asks about marine weather, sea conditions, wave height, swell, ocean currents,
    sea surface temperature, or fishing / PFZ advisories for coastal regions, call `get_marine_weather`.
-6. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
+6. When a user asks about aviation weather, airport conditions, METAR reports, flight categories
+   (VFR/IFR/LIFR), runway visibility, ceiling, or crosswinds for an aerodrome, call `get_aviation_weather`.
+7. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
    use that location in your tool call.
-7. After receiving tool results, present the data conversationally and clearly:
+8. After receiving tool results, present the data conversationally and clearly:
    - For multi-day forecasts: summarize each day with date/day, conditions, min-max temps, and rain probability.
    - For disaster alerts: highlight the severity level (Red/Extreme, Orange/Severe, Yellow/Moderate), affected areas, and safety instructions clearly.
    - For marine reports: clearly state wave height, sea state, safety advisory for fishermen, and PFZ coordinates.
-   - Always mention the data source (e.g. "According to NDMA SACHET / IMD...", "According to INCOIS...", or "According to Open-Meteo...").
-8. If a tool returns an error or no alerts found, inform the user honestly.
-9. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
-10. If the user speaks in Hindi or another Indian language, respond in that language while keeping
+   - For aviation reports: clearly state flight category (VFR/MVFR/IFR), ceiling, visibility, wind speed/direction, and include the decoded METAR highlights.
+   - Always mention the data source (e.g. "According to NDMA SACHET / IMD...", "According to INCOIS...", "Per Aviation Weather Center METAR...", or "According to Open-Meteo...").
+9. If a tool returns an error or no alerts found, inform the user honestly.
+10. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
+11. If the user speaks in Hindi or another Indian language, respond in that language while keeping
    numbers and units in standard form.
-11. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ 🌊 ☀️ 🌧️ etc.).
+12. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ 🌊 ✈️ ☀️ 🌧️ etc.).
 """
 
 # ---------------------------------------------------------------------------
@@ -175,6 +179,29 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_aviation_weather",
+            "description": (
+                "Get official METAR aviation weather, flight category (VFR/MVFR/IFR), ceiling, "
+                "visibility, crosswinds, and altimeter setting for an airport or aerodrome."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "airport": {
+                        "type": "string",
+                        "description": (
+                            "Airport name, city, 4-letter ICAO code, or 3-letter IATA code, "
+                            "e.g. 'VIDP', 'Delhi Airport', 'VABB', 'Mumbai', 'BLR', 'VOBL', 'Goa'."
+                        ),
+                    },
+                },
+                "required": ["airport"],
+            },
+        },
+    },
 ]
 
 # Map tool names → async callables
@@ -183,6 +210,7 @@ _TOOL_DISPATCH: dict = {
     "get_forecast": get_forecast,
     "get_alerts": get_alerts,
     "get_marine_weather": get_marine_weather,
+    "get_aviation_weather": get_aviation_weather,
 }
 
 # Maximum tool-calling rounds to prevent infinite loops
