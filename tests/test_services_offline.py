@@ -396,5 +396,37 @@ async def test_aviation_metar_weather():
         await aviation_client.close()
 
 
+@pytest.mark.asyncio
+async def test_agricultural_crop_advisory():
+    """Verify ICAR/IMD agro-meteorological advisory generation and phenological rules."""
+    import json
+    from app.tools.advisory import get_agricultural_advisory
+    from app.core.router import _TOOL_DISPATCH
+    from app.data_sources.openmeteo import openmeteo_client
+    from app.tools.location_resolver import close_geocoder
+
+    try:
+        adv_json = await get_agricultural_advisory(
+            crop="Rice",
+            stage="Vegetative",
+            location="Guntur",
+        )
+        data = json.loads(adv_json)
+        assert data["crop"] == "Rice"
+        assert data["stage"] == "Vegetative"
+        assert "irrigation_advisory" in data
+        assert "spray_advisory" in data
+        assert "field_operation_advisory" in data
+        assert len(data["pest_disease_alerts"]) > 0
+        assert any("Hopper" in a or "Blight" in a or "Blast" in a for a in data["pest_disease_alerts"])
+
+        # Router registry confirmation
+        assert "get_agricultural_advisory" in _TOOL_DISPATCH
+    finally:
+        await close_geocoder()
+        await openmeteo_client.close()
+
+
+
 
 

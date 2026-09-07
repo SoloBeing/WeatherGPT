@@ -29,6 +29,7 @@ from app.tools.current import get_current_weather
 from app.tools.forecast import get_forecast
 from app.tools.marine import get_marine_weather
 from app.tools.aviation import get_aviation_weather
+from app.tools.advisory import get_agricultural_advisory
 
 logger = logging.getLogger(__name__)
 
@@ -51,19 +52,22 @@ You are WeatherGPT, a helpful and friendly weather assistant specialising in Ind
    sea surface temperature, or fishing / PFZ advisories for coastal regions, call `get_marine_weather`.
 6. When a user asks about aviation weather, airport conditions, METAR reports, flight categories
    (VFR/IFR/LIFR), runway visibility, ceiling, or crosswinds for an aerodrome, call `get_aviation_weather`.
-7. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
+7. When a user asks about farming advice, crop advisories, agricultural weather, irrigation timing,
+   pesticide/fertilizer spraying, sowing, or harvest precautions, call `get_agricultural_advisory`.
+8. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
    use that location in your tool call.
-8. After receiving tool results, present the data conversationally and clearly:
+9. After receiving tool results, present the data conversationally and clearly:
    - For multi-day forecasts: summarize each day with date/day, conditions, min-max temps, and rain probability.
    - For disaster alerts: highlight the severity level (Red/Extreme, Orange/Severe, Yellow/Moderate), affected areas, and safety instructions clearly.
    - For marine reports: clearly state wave height, sea state, safety advisory for fishermen, and PFZ coordinates.
    - For aviation reports: clearly state flight category (VFR/MVFR/IFR), ceiling, visibility, wind speed/direction, and include the decoded METAR highlights.
-   - Always mention the data source (e.g. "According to NDMA SACHET / IMD...", "According to INCOIS...", "Per Aviation Weather Center METAR...", or "According to Open-Meteo...").
-9. If a tool returns an error or no alerts found, inform the user honestly.
-10. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
-11. If the user speaks in Hindi or another Indian language, respond in that language while keeping
+   - For crop advisories: highlight irrigation guidance, spray precautions, harvest windows, and pest/disease alerts.
+   - Always mention the data source (e.g. "According to NDMA SACHET / IMD...", "According to INCOIS...", "Per Aviation Weather Center METAR...", "According to ICAR / IMD Agromet...", or "According to Open-Meteo...").
+10. If a tool returns an error or no alerts found, inform the user honestly.
+11. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
+12. If the user speaks in Hindi or another Indian language, respond in that language while keeping
    numbers and units in standard form.
-12. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ 🌊 ✈️ ☀️ 🌧️ etc.).
+13. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ 🌾 🌊 ✈️ ☀️ 🌧️ etc.).
 """
 
 # ---------------------------------------------------------------------------
@@ -202,6 +206,34 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_agricultural_advisory",
+            "description": (
+                "Get ICAR / IMD agro-meteorological farming advisory for a crop, growth stage, and location. "
+                "Provides deterministic irrigation scheduling, pesticide spray timing, and harvesting advice."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "crop": {
+                        "type": "string",
+                        "description": "Crop name, e.g. 'Rice', 'Wheat', 'Cotton', 'Mustard', 'Sugarcane'.",
+                    },
+                    "stage": {
+                        "type": "string",
+                        "description": "Growth stage, e.g. 'Sowing', 'Vegetative', 'Flowering', 'Harvesting'.",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Farming district, taluk, or village name, e.g. 'Guntur', 'Karnal', 'Wardha'.",
+                    },
+                },
+                "required": ["crop", "stage", "location"],
+            },
+        },
+    },
 ]
 
 # Map tool names → async callables
@@ -211,6 +243,7 @@ _TOOL_DISPATCH: dict = {
     "get_alerts": get_alerts,
     "get_marine_weather": get_marine_weather,
     "get_aviation_weather": get_aviation_weather,
+    "get_agricultural_advisory": get_agricultural_advisory,
 }
 
 # Maximum tool-calling rounds to prevent infinite loops

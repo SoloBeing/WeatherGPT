@@ -154,6 +154,28 @@ class AviationWeather(BaseModel):
     weather_phenomena: Optional[str] = Field(None, description="Present weather codes (e.g. HZ, RA, FG, TS)")
 
 
+class CropAdvisoryReport(BaseModel):
+    """Agro-meteorological advisory report for farmers.
+
+    Combines deterministic weather forecasts with crop-specific phenological
+    rules (ICAR / IMD Agromet format) for actionable field advisories.
+    """
+
+    source: str = Field(default="ICAR / IMD Agromet Engine", description="Advisory engine identifier")
+    data_quality: Optional[str] = Field("verified", description="Data quality: 'verified' or 'synthetic'")
+    crop: str = Field(..., description="Crop name (e.g. Rice, Wheat, Cotton, Mustard)")
+    stage: str = Field(..., description="Crop growth stage (e.g. Sowing, Vegetative, Flowering, Harvesting)")
+    location_name: str = Field(..., description="Target agricultural region / district")
+    issued_at: datetime = Field(..., description="Timestamp of advisory issuance")
+    forecast_rain_sum_mm: float = Field(..., description="Expected cumulative rainfall in mm")
+    forecast_temp_max_c: float = Field(..., description="Forecast maximum temperature in °C")
+    forecast_temp_min_c: float = Field(..., description="Forecast minimum temperature in °C")
+    irrigation_advisory: str = Field(..., description="Guidance on irrigation scheduling")
+    spray_advisory: str = Field(..., description="Guidance on pesticide / fertilizer spraying")
+    field_operation_advisory: str = Field(..., description="Sowing, weeding, or harvesting advice")
+    pest_disease_alerts: list[str] = Field(default_factory=list, description="Pest and disease risk alerts")
+
+
 class LocationMatch(BaseModel):
     """Geocoding result from location resolution."""
 
