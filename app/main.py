@@ -115,6 +115,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.debug("Error closing Aviation client: %s", exc)
 
+    from app.data_sources.era5 import era5_client
+
+    try:
+        await era5_client.close()
+    except Exception as exc:
+        logger.debug("Error closing ERA5 client: %s", exc)
+
 
 # ---------------------------------------------------------------------------
 # FastAPI app

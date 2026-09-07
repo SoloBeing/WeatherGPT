@@ -30,6 +30,7 @@ from app.tools.forecast import get_forecast
 from app.tools.marine import get_marine_weather
 from app.tools.aviation import get_aviation_weather
 from app.tools.advisory import get_agricultural_advisory
+from app.tools.climatology import get_climatology
 
 logger = logging.getLogger(__name__)
 
@@ -54,18 +55,20 @@ You are WeatherGPT, a helpful and friendly weather assistant specialising in Ind
    (VFR/IFR/LIFR), runway visibility, ceiling, or crosswinds for an aerodrome, call `get_aviation_weather`.
 7. When a user asks about farming advice, crop advisories, agricultural weather, irrigation timing,
    pesticide/fertilizer spraying, sowing, or harvest precautions, call `get_agricultural_advisory`.
-8. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
+8. When a user asks about historical climate trends, multi-decadal normals (1991-2020), past rainfall/temperature baselines, standard deviation, anomalies, or climate change patterns, call `get_climatology`.
+9. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
    use that location in your tool call.
-9. After receiving tool results, present the data conversationally and clearly:
+10. After receiving tool results, present the data conversationally and clearly:
    - For multi-day forecasts: summarize each day with date/day, conditions, min-max temps, and rain probability.
    - For disaster alerts: highlight the severity level (Red/Extreme, Orange/Severe, Yellow/Moderate), affected areas, and safety instructions clearly.
    - For marine reports: clearly state wave height, sea state, safety advisory for fishermen, and PFZ coordinates.
    - For aviation reports: clearly state flight category (VFR/MVFR/IFR), ceiling, visibility, wind speed/direction, and include the decoded METAR highlights.
    - For crop advisories: highlight irrigation guidance, spray precautions, harvest windows, and pest/disease alerts.
-   - Always mention the data source (e.g. "According to NDMA SACHET / IMD...", "According to INCOIS...", "Per Aviation Weather Center METAR...", "According to ICAR / IMD Agromet...", or "According to Open-Meteo...").
-10. If a tool returns an error or no alerts found, inform the user honestly.
-11. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
-12. If the user speaks in Hindi or another Indian language, respond in that language while keeping
+   - For climatology reports: highlight baseline normal, extreme min/max, standard deviation, decadal warming trend, and recent anomalies.
+   - Always mention the data source (e.g. "According to NDMA SACHET / IMD...", "According to INCOIS...", "Per Aviation Weather Center METAR...", "According to ICAR / IMD Agromet...", "According to ECMWF ERA5 Reanalysis...", or "According to Open-Meteo...").
+11. If a tool returns an error or no alerts found, inform the user honestly.
+12. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
+13. If the user speaks in Hindi or another Indian language, respond in that language while keeping
    numbers and units in standard form.
 13. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ 🌾 🌊 ✈️ ☀️ 🌧️ etc.).
 """
@@ -234,6 +237,38 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_climatology",
+            "description": (
+                "Retrieve historical climatological normals, anomalies, variability, and decadal trends "
+                "from ECMWF ERA5 multi-decadal reanalysis for an Indian location."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "City, district, or state name, e.g. 'Delhi', 'Bengaluru', 'Rajasthan'.",
+                    },
+                    "variable": {
+                        "type": "string",
+                        "description": "Target meteorological variable: 'temperature', 'precipitation', or 'all'.",
+                    },
+                    "start_year": {
+                        "type": "integer",
+                        "description": "Start year of baseline period (default: 1991 for standard WMO normal).",
+                    },
+                    "end_year": {
+                        "type": "integer",
+                        "description": "End year of baseline period (default: 2020 for standard WMO normal).",
+                    },
+                },
+                "required": ["location"],
+            },
+        },
+    },
 ]
 
 # Map tool names → async callables
@@ -244,6 +279,7 @@ _TOOL_DISPATCH: dict = {
     "get_marine_weather": get_marine_weather,
     "get_aviation_weather": get_aviation_weather,
     "get_agricultural_advisory": get_agricultural_advisory,
+    "get_climatology": get_climatology,
 }
 
 # Maximum tool-calling rounds to prevent infinite loops

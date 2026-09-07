@@ -176,6 +176,39 @@ class CropAdvisoryReport(BaseModel):
     pest_disease_alerts: list[str] = Field(default_factory=list, description="Pest and disease risk alerts")
 
 
+class MonthlyClimateNormal(BaseModel):
+    """Monthly normal values for historical climate baseline."""
+
+    month: int = Field(..., ge=1, le=12, description="Month number 1-12")
+    month_name: str = Field(..., description="Month name (e.g. January)")
+    mean_temp_c: Optional[float] = Field(None, description="Average temperature in °C")
+    mean_precipitation_mm: Optional[float] = Field(None, description="Average monthly rainfall in mm")
+
+
+class ClimatologyReport(BaseModel):
+    """Historical climate analysis and long-term normals report.
+
+    Synthesises multi-decadal reanalysis records (ECMWF ERA5) to compute
+    climatological baselines, variability (std dev), anomalies, and warming trends.
+    """
+
+    source: str = Field(default="ECMWF ERA5 Reanalysis (via Open-Meteo Archive)", description="Data source")
+    data_quality: Optional[str] = Field("verified", description="Data quality: 'verified' or 'synthetic'")
+    location_name: str = Field(..., description="Target location name")
+    lat: float
+    lon: float
+    baseline_period: str = Field(..., description="E.g. '1991-2020 (WMO 30-year normal)'")
+    variable: str = Field(..., description="Target meteorological variable (e.g. temperature, precipitation, all)")
+    annual_mean: float = Field(..., description="Long-term annual mean")
+    annual_min: float = Field(..., description="Recorded extreme minimum")
+    annual_max: float = Field(..., description="Recorded extreme maximum")
+    std_dev: float = Field(..., description="Standard deviation over the baseline period")
+    warming_trend_c_per_decade: Optional[float] = Field(None, description="Observed warming or precip trend per decade")
+    recent_anomaly: Optional[float] = Field(None, description="Recent year anomaly relative to long-term baseline")
+    monthly_normals: list[MonthlyClimateNormal] = Field(default_factory=list, description="Monthly climate normals")
+    narrative_summary: str = Field(..., description="Concise climate trend and historical normal summary")
+
+
 class LocationMatch(BaseModel):
     """Geocoding result from location resolution."""
 

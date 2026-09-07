@@ -427,6 +427,60 @@ async def test_agricultural_crop_advisory():
         await openmeteo_client.close()
 
 
+@pytest.mark.asyncio
+async def test_era5_climatology_and_historical_normals():
+    """Verify ECMWF ERA5 climatology calculation, multi-decadal normals, and router registry."""
+    import json
+    from app.data_sources.era5 import era5_client
+    from app.tools.climatology import get_climatology
+    from app.core.router import _TOOL_DISPATCH
+    from app.tools.location_resolver import close_geocoder
+
+    try:
+        # 1. Temperature normal analysis
+        temp_rep = await era5_client.fetch_climatology(
+            lat=28.61,
+            lon=77.20,
+            location_name="Delhi",
+            variable="temperature",
+            start_year=1991,
+            end_year=2020,
+        )
+        assert temp_rep.location_name == "Delhi"
+        assert temp_rep.variable == "temperature"
+        assert temp_rep.annual_min <= temp_rep.annual_mean <= temp_rep.annual_max
+        assert len(temp_rep.monthly_normals) == 12
+        assert "1991" in temp_rep.baseline_period
+        assert temp_rep.narrative_summary != ""
+
+        # 2. Precipitation normal analysis
+        precip_rep = await era5_client.fetch_climatology(
+            lat=13.08,
+            lon=80.27,
+            location_name="Chennai",
+            variable="precipitation",
+            start_year=1991,
+            end_year=2020,
+        )
+        assert precip_rep.variable == "precipitation"
+        assert precip_rep.annual_mean > 0
+        assert len(precip_rep.monthly_normals) == 12
+
+        # 3. Tool invocation via geocoding
+        tool_res = await get_climatology("Jaipur", variable="temperature")
+        data = json.loads(tool_res)
+        assert "annual_mean" in data
+        assert "monthly_normals" in data
+        assert len(data["monthly_normals"]) == 12
+
+        # 4. Router registry confirmation
+        assert "get_climatology" in _TOOL_DISPATCH
+    finally:
+        await era5_client.close()
+        await close_geocoder()
+
+
+
 
 
 
