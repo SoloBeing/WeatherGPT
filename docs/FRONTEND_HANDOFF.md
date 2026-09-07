@@ -235,29 +235,72 @@ Populates the language selector dropdown in the UI with 23 supported Indian lang
 Returns all active NDMA SACHET and IMD disaster warnings currently monitored across India.
 
 #### C. Live WebSocket Stream (`WS /ws/alerts`)
-Connect your app to `ws://localhost:8000/ws/alerts` to receive push events when severe weather or cyclone alerts are issued.
+Connect your frontend to `ws://localhost:8000/ws/alerts` to receive push events for active and incoming emergency warnings.
 
+##### Connection Handshake & Lifecycle:
+1. **Initial Snapshot (`type: "init"`):** Immediately upon connection, the server sends the current active alert snapshot:
+   ```json
+   {
+     "type": "init",
+     "timestamp": "2026-09-07T14:30:00Z",
+     "active_alerts_count": 2,
+     "alerts": [ /* array of active AlertRecord objects */ ]
+   }
+   ```
+2. **Real-Time Broadcast (`type: "weather_alert"`):** Whenever NDMA SACHET or IMD issues a new Severe or Extreme warning, it is broadcast live:
+   ```json
+   {
+     "type": "weather_alert",
+     "timestamp": "2026-09-07T14:35:12Z",
+     "alert": {
+       "alert_id": "NDMA-2026-09-07-001",
+       "event": "Very Severe Cyclonic Storm",
+       "severity": "Extreme",
+       "headline": "Red Alert: Cyclonic storm approaching coast",
+       "instruction": "Evacuate low-lying areas and remain indoors."
+     }
+   }
+   ```
+
+##### Frontend Integration Example:
 ```javascript
 const ws = new WebSocket("ws://localhost:8000/ws/alerts");
 
 ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.type === "weather_alert") {
-    console.warn("🚨 Disaster Alert:", data.alert.headline);
-    // Display red emergency toast or alert banner
+  const msg = JSON.parse(event.data);
+  if (msg.type === "init") {
+    console.log(`Loaded initial snapshot of ${msg.active_alerts_count} active disaster alerts.`);
+    // Render initial alert ticker / badge count
+  } else if (msg.type === "weather_alert") {
+    console.warn("🚨 Real-time Emergency Alert Received:", msg.alert.headline);
+    // Trigger audio chime & show emergency toast / banner
   }
 };
 ```
 
 ---
 
-### 2.6 Health Check & Diagnostics (`GET /health`)
+### 2.6 SIH Multi-Domain Weather Modules (Chat & Tools)
+
+WeatherGPT includes dedicated meteorological engines for all key SIH domains:
+
+| Domain | Underlying Engine | Tool Name | Key Data Returned in `ChatResponse.data` |
+|---|---|---|---|
+| **Marine & Fishery** | Open-Meteo Marine + INCOIS | `get_marine_weather` | `MarinePoint` (sea state, wave height, swell, ocean currents, SST, PFZ advisory) |
+| **Aviation** | NOAA Aviation Weather Center | `get_aviation_weather` | `AviationWeather` (flight category VFR/IFR, decoded METAR, crosswinds, runway visibility) |
+| **Agriculture** | ICAR / IMD Agromet Engine | `get_agricultural_advisory` | `CropAdvisoryReport` (phenology stage, irrigation timing, spray windows, pest risks) |
+| **Historical Climate** | ECMWF ERA5 Reanalysis | `get_climatology` | `ClimatologyReport` (WMO 30-year normal, decadal warming trend, anomalies, monthly normals) |
+| **NWP Forecasting** | NOAA GFS 0.25° Zarr Store | `get_current_weather`, `get_forecast` | `ForecastPoint`, `ForecastTimeline` (with `data_quality: "verified"` or `"synthetic"`) |
+
+---
+
+### 2.7 Health Check & Diagnostics (`GET /health`)
 
 - **Endpoint:** `GET http://localhost:8000/health`
-- **Response:**
+- **Response (`200 OK`):**
 ```json
 {
-  "status": "ok",
+  "status": "ok", // "ok" if database & redis are healthy, "degraded" if running offline/sandbox
   "database": "connected",
   "redis": "connected",
   "scheduler_running": true
