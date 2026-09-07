@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_API_KEY: str = ""
     INTENT_MODEL: str = "gpt-4o-mini"
+    GROQ_API_KEY: str = ""
 
     # --- Bhashini (Voice + Translation) ---
     BHASHINI_API_KEY: str = ""

@@ -149,7 +149,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Tighten in production
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -174,8 +174,10 @@ async def health_check():
     db_healthy = await check_db_health()
     redis_healthy = await cache.ping()
 
+    status = "ok" if (db_healthy and redis_healthy) else "degraded"
+
     return {
-        "status": "ok",
+        "status": status,
         "database": "connected" if db_healthy else "disconnected",
         "redis": "connected" if redis_healthy else "disconnected",
         "scheduler_running": ingestion_scheduler._is_running,

@@ -364,15 +364,25 @@ async def chat(
     last_tool_data: Optional[dict] = None
     last_factual_template: Optional[str] = None
 
+    # Resolve model and provider key gracefully (OpenAI vs Groq)
+    llm_model = settings.LLM_MODEL
+    llm_key = settings.LLM_API_KEY
+    if not llm_key and settings.GROQ_API_KEY:
+        llm_key = settings.GROQ_API_KEY
+        if llm_model == "gpt-4o-mini":
+            llm_model = "groq/llama-3.3-70b-versatile"
+    elif llm_key.startswith("gsk_") and llm_model == "gpt-4o-mini":
+        llm_model = "groq/llama-3.3-70b-versatile"
+
     try:
         # --- Tool-calling loop ---
         for _ in range(_MAX_TOOL_ROUNDS):
             response = await litellm.acompletion(
-                model=settings.LLM_MODEL,
+                model=llm_model,
                 messages=llm_messages,
                 tools=TOOLS,
                 tool_choice="auto",
-                api_key=settings.LLM_API_KEY,
+                api_key=llm_key,
                 temperature=0.2,
             )
 
@@ -469,9 +479,9 @@ async def chat(
             # Exhausted max rounds — force a response without tools
             logger.warning("Hit max tool rounds (%d), forcing final response", _MAX_TOOL_ROUNDS)
             response = await litellm.acompletion(
-                model=settings.LLM_MODEL,
+                model=llm_model,
                 messages=llm_messages,
-                api_key=settings.LLM_API_KEY,
+                api_key=llm_key,
                 temperature=0.3,
             )
             response_message = response.choices[0].message

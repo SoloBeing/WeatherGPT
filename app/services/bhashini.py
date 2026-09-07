@@ -289,7 +289,7 @@ class BhashiniService:
             response = await litellm.atranscription(
                 model=f"groq/{settings.GROQ_WHISPER_MODEL}",
                 file=("audio.wav", audio_bytes),
-                api_key=settings.LLM_API_KEY,
+                api_key=settings.GROQ_API_KEY or settings.LLM_API_KEY,
                 language=source_lang,
             )
             transcript = response.text or ""

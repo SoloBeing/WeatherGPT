@@ -49,7 +49,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         logger.exception("Chat processing failed: %s", e)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to process your request: {e}",
+            detail="An internal error occurred while processing your weather request. Please try again later.",
         ) from e
 
     logger.info("Chat response: %d chars, sources=%s", len(response.reply), response.sources)

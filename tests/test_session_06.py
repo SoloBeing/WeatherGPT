@@ -137,7 +137,7 @@ def test_api_endpoints_health_and_regression():
     resp = client.get("/health")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["status"] == "ok"
+    assert data["status"] in ("ok", "degraded")
     assert "database" in data
     assert "redis" in data
 
