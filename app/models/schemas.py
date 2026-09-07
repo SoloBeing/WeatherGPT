@@ -23,6 +23,7 @@ class ForecastPoint(BaseModel):
     """
 
     source: str = Field(..., description="Data source identifier, e.g. 'open-meteo', 'imd'")
+    data_quality: Optional[str] = Field("verified", description="Data quality indicator: 'verified' (real NWP/observation) or 'synthetic' (local sandbox fallback)")
     issued_at: datetime = Field(..., description="When the source produced this data")
     valid_at: datetime = Field(..., description="What time the forecast/observation is for")
     lat: float
@@ -90,6 +91,7 @@ class ForecastTimeline(BaseModel):
     """Universal multi-day/hourly forecast timeline output."""
 
     source: str = Field(..., description="Data source identifier, e.g. 'open-meteo', 'gfs'")
+    data_quality: Optional[str] = Field("verified", description="Data quality indicator: 'verified' (real NWP/observation) or 'synthetic' (local sandbox fallback)")
     issued_at: datetime = Field(..., description="When the data was produced")
     lat: float
     lon: float

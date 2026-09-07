@@ -174,8 +174,20 @@ class GFSClient(BaseDataSource):
             except Exception:
                 pass
 
+        is_synthetic = (
+            ds.attrs.get("data_quality") == "synthetic"
+            or "Synthetic" in ds.attrs.get("institution", "")
+        )
+        data_quality = "synthetic" if is_synthetic else "verified"
+        source_label = (
+            f"NOAA GFS (Synthetic Sandbox - {cycle_key})"
+            if is_synthetic
+            else f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})"
+        )
+
         return ForecastPoint(
-            source=f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})",
+            source=source_label,
+            data_quality=data_quality,
             issued_at=issued_at,
             valid_at=valid_at,
             lat=round(lat, 4),
@@ -281,8 +293,20 @@ class GFSClient(BaseDataSource):
                 )
             )
 
+        is_synthetic = (
+            ds.attrs.get("data_quality") == "synthetic"
+            or "Synthetic" in ds.attrs.get("institution", "")
+        )
+        data_quality = "synthetic" if is_synthetic else "verified"
+        source_label = (
+            f"NOAA GFS (Synthetic Sandbox - {cycle_key})"
+            if is_synthetic
+            else f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})"
+        )
+
         return ForecastTimeline(
-            source=f"NOAA GFS (0.25° NWP via Zarr - {cycle_key})",
+            source=source_label,
+            data_quality=data_quality,
             issued_at=issued_at,
             lat=round(lat, 4),
             lon=round(lon, 4),

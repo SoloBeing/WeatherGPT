@@ -207,6 +207,7 @@ class GFSIngestionPipeline:
                 "cycle": cycle_dt.isoformat(),
                 "institution": "NOAA NCEP (Synthetic Sandbox Fallback)",
                 "source": "WeatherGPT Ingestion",
+                "data_quality": "synthetic",
             },
         )
         return ds
@@ -242,6 +243,7 @@ class GFSIngestionPipeline:
             else:
                 # Concatenate along step dimension
                 ds = xr.concat(step_datasets, dim="step")
+                ds.attrs["data_quality"] = "verified"
 
         # Compute derived meteorological parameters
         if "u10" in ds and "v10" in ds:

@@ -146,6 +146,21 @@ async def test_gfs_client_cycle_failover():
         point = await client.fetch_current(28.6139, 77.2090)
         assert point.temperature_c is not None
         assert "NOAA GFS" in point.source
+        assert point.data_quality in ("verified", "synthetic")
 
     finally:
         shutil.rmtree(corrupt_path, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_synthetic_data_quality_transparency(synthetic_gfs_cycle):
+    """Verify that synthetic fallback datasets honestly report data_quality='synthetic'."""
+    from app.data_sources.gfs import GFSClient
+    client = GFSClient()
+    point = await client.fetch_current(28.6139, 77.2090)
+    assert point.data_quality == "synthetic"
+    assert "Synthetic Sandbox" in point.source
+
+    timeline = await client.fetch_forecast(28.6139, 77.2090, days=3)
+    assert timeline.data_quality == "synthetic"
+    assert "Synthetic Sandbox" in timeline.source
