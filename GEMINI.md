@@ -35,28 +35,28 @@ Every number comes from a deterministic service. This boundary is sacred.
 ```
 app/
 ├── api/                      → FastAPI routes (chat, voice, websocket, alerts, weather) & deps
-├── core/                     → intent classifier, tool dispatch, response templates
-├── tools/                    → get_current, get_forecast, get_alerts, get_climatology, get_advisory, location_resolver
-├── data_sources/             → Open-Meteo, IMD, GFS, ECMWF, ERA5 (all → ForecastPoint)
-├── models/                   → Pydantic schemas + SQLAlchemy ORM models
-├── database/                 → async session + Redis client, MinIO Zarr storage
-├── pipelines/                → GFS pipeline, SACHET poller, WIS2 subscriber, scheduler
+├── core/                     → router, anti-hallucination templates, resilience (SingleFlight, backoff)
+├── tools/                    → current, forecast, alerts, marine, aviation, advisory, climatology, location_resolver
+├── data_sources/             → Open-Meteo, GFS, INCOIS, Aviation, ERA5
+├── models/                   → Pydantic schemas (NWP, Marine, Aviation, Agromet, Climate) + SQLAlchemy ORM models
+├── database/                 → async session + Redis connection pool, MinIO Zarr storage
+├── pipelines/                → GFS GRIB2 pipeline, SACHET poller, scheduler
 ├── services/                 → Bhashini, FCM
 ├── config.py                 → pydantic-settings, UPPER_CASE fields
-└── main.py                   → FastAPI entry point
+└── main.py                   → FastAPI entry point & lifespan manager
 ```
 
 ## Data Sources
 
 | Source | Access | Use |
 |--------|--------|-----|
-| Open-Meteo | No key, REST | Primary fallback, blended forecasts |
-| IMD Mausam | JSON (undocumented) | Official Indian data, verify before demo |
-| NOAA GFS | S3 anon | Raw 0.25° GRIB2, 384h |
-| ECMWF Open Data | ecmwf-opendata pkg | IFS 0.25°, better skill |
-| ERA5 | cdsapi | 1940→present reanalysis |
-| SACHET | CAP-XML feed | India CAP alerts |
-| WIS2.0 | MQTTS | Live push notifications |
+| Open-Meteo | No key, REST | Primary point forecast & global fallback |
+| NOAA GFS | S3 anon (Herbie) | Raw 0.25° GRIB2 NWP cropped to India bounding box |
+| INCOIS / Open-Meteo Marine | REST | Wave height, swell, currents, sea state & PFZ advisory |
+| NOAA Aviation Weather Center | REST (METAR) | Live aerodrome METAR observations & flight categories |
+| ICAR / IMD Agromet | Deterministic Engine | Phenology-driven crop advisories & pest alerts |
+| ECMWF ERA5 | CDS / Open-Meteo Archive | 1940→present reanalysis & WMO 30-year climate normals |
+| NDMA SACHET | Live JSON / CAP-XML | National disaster alerts & official warning feed |
 
 ## Build Priority (from spec)
 
@@ -106,37 +106,35 @@ app/
 
 ## Current State (updated each session)
 
-**Last session:** Session 07 & Frontend Enablement (2026-09-06)  
+**Last session:** Dev Session 07 — Multi-Domain Expansion, Provenance Transparency & Review Resolution (2026-09-07)  
 **What exists:**
-- ✅ **POST /chat** works end-to-end with Open-Meteo forecasts, GFS Zarr stores, and SACHET/IMD active disaster alerts, with raw structured data in `ChatResponse.data` for simultaneous conversational text and interactive UI cards
+- ✅ **POST /chat** works end-to-end with dynamic source attribution and multi-domain tools (GFS NWP, Open-Meteo, INCOIS Marine, Aviation METAR, ICAR Agromet, ECMWF ERA5, and SACHET alerts), anti-hallucination verified template injection, and raw structured payloads in `ChatResponse.data` for rich UI widgets
+- ✅ **Full SIH Meteorological Tool Suite:**
+  - `get_current_weather` & `get_forecast` — GFS 0.25° NWP Zarr store with Open-Meteo fallback
+  - `get_alerts` — NDMA SACHET active emergency alerts with polygon/circle/district spatial matching
+  - `get_marine_weather` — Open-Meteo Marine + INCOIS sea state, wave/swell analytics, and PFZ fishing advisories
+  - `get_aviation_weather` — NOAA Aviation Weather Center live METAR, flight category (VFR/MVFR/IFR), ceiling, and visibility
+  - `get_agricultural_advisory` — ICAR / IMD Agromet rule engine evaluating 5-day NWP forecasts against crop growth stages
+  - `get_climatology` — ECMWF ERA5 multi-decadal reanalysis normals, standard deviation, and decadal warming trends
 - ✅ **Direct REST Weather & Alert Endpoints:**
   - `GET /weather/current?location=...` (or `?lat=...&lon=...`) — raw JSON `ForecastPoint`
   - `GET /weather/forecast?location=...&days=5` — structured `ForecastTimeline`
   - `GET /weather/locations?q=...` — autocomplete & geocoding `LocationMatch[]`
   - `GET /alerts?location=...` — active disaster alerts for target region
   - `GET /alerts/active` — all active nationwide NDMA SACHET / IMD warnings
-- ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR → NMT → LLM → NMT → TTS → Audio
-- ✅ **GET /voice/languages** — returns 23 supported language codes
-- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch`, `VoiceChatResponse` schemas in `app/models/schemas.py`
-- ✅ **SQLAlchemy ORM Models** (`ForecastCycle`, `Alert`, `UserLocation`, `Gazetteer`, `Observation`) with GeoAlchemy2 PostGIS types and TimescaleDB hypertable target in `app/models/db_models.py` and `app/models/orm.py`
-- ✅ **Alembic async migrations** configured in `alembic.ini` and `alembic/env.py` with initial migrations `0001_initial_schema.py` and `0002_performance_and_spatial_indexes.py` supporting `postgis`, `pg_trgm`, GIN indexes, and `timescaledb`
-- ✅ **MinIO / local Zarr storage layer** (`app/database/minio_client.py`) with automatic partitioning and chunking for millisecond spatial slicing
-- ✅ **GFS GRIB2 Ingestion Pipeline** (`app/pipelines/gfs_pipeline.py`) fetching NOAA GFS 0.25° models via `Herbie`, subsetting to India bounding box (6°-38°N, 68°-98°E), decoding via `cfgrib`/`xarray`, deriving 12 meteorological variables, and persisting to Zarr
-- ✅ **APScheduler background jobs** (`app/pipelines/scheduler.py`) running 4x daily GFS ingest (03:30, 09:30, 15:30, 21:30 UTC), 60s SACHET alert feed polling, and precomputing forecasts for 18 key Indian state capitals and metropolitan hubs into Redis
-- ✅ **GFS data source reader** (`app/data_sources/gfs.py`) and weather tool integration with automatic GFS Zarr primary and Open-Meteo fallback
-- ✅ Open-Meteo client (`fetch_current` + `fetch_forecast` with 15 daily & 8 hourly params)
-- ✅ SACHET CAP-XML Poller & active alert registry with spatial polygon and district/state matching in `app/pipelines/sachet_poller.py`
-- ✅ Location resolver (Open-Meteo geocoding + 36 Indian States/UTs Gazetteer) in `app/tools/location_resolver.py`
-- ✅ `get_current_weather`, `get_forecast`, `get_alerts` tools with Redis cache-aside in `app/tools/`
-- ✅ Redis cache client (`app/database/redis_cache.py`) with fail-open fallback and connection pooling
-- ✅ `SingleFlight` request coalescing in `app/core/resilience.py` preventing cache stampedes
-- ✅ WebSocket live alert streaming (`app/api/routes/websocket.py` on `/ws/alerts`)
-- ✅ FCM push notification service (`app/services/fcm.py`) with severity topic dispatch
-- ✅ Bhashini ULCA client (`app/services/bhashini.py`) — ASR, NMT, TTS with pipeline config caching
-- ✅ Groq Whisper ASR fallback + gTTS TTS fallback (graceful degradation)
-- ✅ LLM orchestrator (`app/core/router.py`) with litellm tool-calling loop, multi-turn conversation session history
-- ✅ Response templates — 6 languages: English, Hindi, Tamil, Telugu, Bengali, Marathi (`app/core/templates.py`)
-- ✅ FastAPI app with CORS, /chat, /voice/chat, /voice/languages, /ws/alerts, /health with subsystem reporting in `app/api/`
+- ✅ **POST /voice/chat** — full voice-to-voice pipeline: Audio → ASR (Bhashini/Groq Whisper) → NMT → LLM → NMT → TTS (Bhashini/gTTS) → Audio
+- ✅ **GET /voice/languages** — returns 23 supported Indic language codes
+- ✅ **Transparent Provenance:** `data_quality: "verified" | "synthetic"` across all models, preventing silent synthetic data substitution
+- ✅ **Proactive Alert Push:** Live SACHET poller wired to both WebSocket (`/ws/alerts` with initial `type: "init"` snapshot and live `type: "weather_alert"` broadcasts) and FCM topic push (`weather_alerts_extreme`, `weather_alerts_severe`)
+- ✅ `ForecastPoint`, `DailyForecast`, `HourlyForecast`, `ForecastTimeline`, `MarinePoint`, `AviationWeather`, `CropAdvisoryReport`, `ClimatologyReport`, `MonthlyClimateNormal`, `AlertRecord`, `AlertListResponse`, `ChatRequest/Response`, `LocationMatch`, `VoiceChatResponse` schemas in `app/models/schemas.py`
+- ✅ **Anti-Hallucination Verified Templates:** Multi-language templates (`app/core/templates.py`) ensuring exact factual preservation in Indic languages and automatic template fallback during vendor LLM outages
+- ✅ **SQLAlchemy ORM Models** (`ForecastCycle`, `Alert`, `UserLocation`, `Gazetteer`, `Observation`) with GeoAlchemy2 PostGIS types and TimescaleDB hypertable target in `app/models/db_models.py`
+- ✅ **Alembic async migrations** configured with `0001_initial_schema.py` and `0002_performance_and_spatial_indexes.py` (GIN trigram, composite indexes)
+- ✅ **MinIO / local Zarr storage layer** (`app/database/minio_client.py`) with automatic partitioning and chunking
+- ✅ **GFS GRIB2 Ingestion Pipeline** (`app/pipelines/gfs_pipeline.py`) fetching NOAA GFS 0.25° models via `Herbie`, subsetting to India bounding box (6°-38°N, 68°-98°E), decoding via `cfgrib`/`xarray`, and persisting to Zarr
+- ✅ **APScheduler background jobs** (`app/pipelines/scheduler.py`) running 4x daily GFS ingest, 60s SACHET alert polling, and Redis cache warming for 18 key Indian state capitals
+- ✅ **Resilience & High Performance:** `SingleFlight` request coalescing, asyncpg pool (`DB_POOL_SIZE=20`), Redis `ConnectionPool`, HTTP client connection pooling (`httpx.Limits`), and vectorized 1D coordinate slicing
+- ✅ **Containerization & Kubernetes:** Multi-stage Dockerfile with Astral `uv`, non-root security (`weathergpt:10001`), `docker-compose.yml` (PostGIS, Redis, MinIO, API, Worker), 13 Kubernetes manifests with HPA, and end-to-end automated demo runner (`scripts/demo.py`)
 - ✅ **Frontend Developer Tooling & Types:**
   - TypeScript interface definitions in `docs/weathergpt-types.ts`
   - OpenAPI 3.1 specification in `docs/openapi.json`
