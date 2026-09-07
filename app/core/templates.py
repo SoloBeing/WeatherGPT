@@ -18,8 +18,11 @@ Other languages fall back to English template + Bhashini NMT translation.
 
 from app.models.schemas import (
     AlertListResponse,
+    AviationWeather,
+    CropAdvisoryReport,
     ForecastPoint,
     ForecastTimeline,
+    MarinePoint,
 )
 
 # ---------------------------------------------------------------------------
@@ -314,3 +317,39 @@ def format_alerts(alert_response: AlertListResponse, language: str = "en") -> st
             lines.append(f"  - **Valid until:** {alert.expires_at}")
 
     return "\n".join(lines)
+
+
+def format_marine_weather(point: MarinePoint) -> str:
+    """Format marine conditions and PFZ advisory into a verified summary string."""
+    lines = [
+        f"Marine Observation for {point.location_name} (Sea State: {point.sea_state}):",
+        f"• Wave height: {point.wave_height_m} m, direction: {point.wave_direction_deg}°, period: {point.wave_period_s} s",
+        f"• Sea surface temp: {point.sea_surface_temp_c}°C, current: {point.ocean_current_speed_kmh} km/h",
+        f"• Advisory: {point.pfz_advisory}",
+    ]
+    return "\n".join(lines)
+
+
+def format_aviation_weather(aviation: AviationWeather) -> str:
+    """Format METAR observation and flight category into a verified summary string."""
+    lines = [
+        f"METAR for {aviation.station_name} ({aviation.icao_code}) — Flight Category: {aviation.flight_category}:",
+        f"• Temp: {aviation.temperature_c}°C, Wind: {aviation.wind_speed_kt} kt @ {aviation.wind_direction_deg}°",
+        f"• Visibility: {aviation.visibility_sm} sm, Altimeter: {aviation.altimeter_hpa} hPa",
+        f"• Raw: {aviation.raw_metar}",
+    ]
+    return "\n".join(lines)
+
+
+def format_crop_advisory(advisory: CropAdvisoryReport) -> str:
+    """Format ICAR/IMD agro-meteorological advisory into a verified summary string."""
+    lines = [
+        f"Agromet Advisory for {advisory.crop} ({advisory.stage} stage) in {advisory.location_name}:",
+        f"• Irrigation: {advisory.irrigation_advisory}",
+        f"• Spraying: {advisory.spray_advisory}",
+        f"• Field operations: {advisory.field_operation_advisory}",
+    ]
+    if advisory.pest_disease_alerts:
+        lines.append(f"• Pest/Disease Risks: {'; '.join(advisory.pest_disease_alerts)}")
+    return "\n".join(lines)
+

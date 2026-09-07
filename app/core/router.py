@@ -22,8 +22,24 @@ from typing import Optional
 import litellm
 
 from app.config import settings
+from app.core.templates import (
+    format_alerts,
+    format_aviation_weather,
+    format_crop_advisory,
+    format_current_weather,
+    format_forecast,
+    format_marine_weather,
+)
 from app.database.redis_cache import cache
-from app.models.schemas import ChatResponse
+from app.models.schemas import (
+    AlertListResponse,
+    AviationWeather,
+    ChatResponse,
+    CropAdvisoryReport,
+    ForecastPoint,
+    ForecastTimeline,
+    MarinePoint,
+)
 from app.tools.alerts_tool import get_alerts
 from app.tools.current import get_current_weather
 from app.tools.forecast import get_forecast
@@ -346,75 +362,127 @@ async def chat(
 
     sources: list[str] = []
     last_tool_data: Optional[dict] = None
+    last_factual_template: Optional[str] = None
 
-    # --- Tool-calling loop ---
-    for _ in range(_MAX_TOOL_ROUNDS):
-        response = await litellm.acompletion(
-            model=settings.LLM_MODEL,
-            messages=llm_messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            api_key=settings.LLM_API_KEY,
-            temperature=0.2,
-        )
+    try:
+        # --- Tool-calling loop ---
+        for _ in range(_MAX_TOOL_ROUNDS):
+            response = await litellm.acompletion(
+                model=settings.LLM_MODEL,
+                messages=llm_messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                api_key=settings.LLM_API_KEY,
+                temperature=0.2,
+            )
 
-        response_message = response.choices[0].message
+            response_message = response.choices[0].message
 
-        # If LLM didn't call a tool, we're done
-        if not response_message.tool_calls:
-            break
+            # If LLM didn't call a tool, we're done
+            if not response_message.tool_calls:
+                break
 
-        # Append the assistant's message (with tool_calls) to loop history
-        llm_messages.append(response_message.model_dump())
+            # Append the assistant's message (with tool_calls) to loop history
+            llm_messages.append(response_message.model_dump())
 
-        # Execute each tool call
-        for tool_call in response_message.tool_calls:
-            fn_name = tool_call.function.name
-            fn_args_str = tool_call.function.arguments
+            # Execute each tool call
+            for tool_call in response_message.tool_calls:
+                fn_name = tool_call.function.name
+                fn_args_str = tool_call.function.arguments
 
-            logger.info("Tool call: %s(%s)", fn_name, fn_args_str)
+                logger.info("Tool call: %s(%s)", fn_name, fn_args_str)
 
-            try:
-                fn_args = json.loads(fn_args_str)
-            except json.JSONDecodeError:
-                fn_args = {}
-
-            tool_fn = _TOOL_DISPATCH.get(fn_name)
-            if tool_fn:
-                result = await tool_fn(**fn_args)
                 try:
-                    parsed_res = json.loads(result)
-                    if isinstance(parsed_res, dict) and "error" not in parsed_res:
-                        last_tool_data = parsed_res
-                except Exception:
-                    pass
+                    fn_args = json.loads(fn_args_str)
+                except json.JSONDecodeError:
+                    fn_args = {}
 
-                if fn_name == "get_alerts":
-                    sources.extend(["sachet-ndma", "imd"])
+                tool_fn = _TOOL_DISPATCH.get(fn_name)
+                if tool_fn:
+                    result = await tool_fn(**fn_args)
+                    parsed_res: dict = {}
+                    try:
+                        loaded = json.loads(result)
+                        if isinstance(loaded, dict) and "error" not in loaded:
+                            parsed_res = loaded
+                            last_tool_data = parsed_res
+                    except Exception:
+                        parsed_res = {}
+
+                    # Dynamic Source Attribution (Item #9)
+                    tool_source = parsed_res.get("source") if isinstance(parsed_res, dict) else None
+                    if tool_source:
+                        sources.append(tool_source)
+                    elif fn_name == "get_alerts":
+                        sources.extend(["sachet-ndma", "imd"])
+                    elif fn_name == "get_marine_weather":
+                        sources.append("INCOIS / Open-Meteo Marine")
+                    elif fn_name == "get_aviation_weather":
+                        sources.append("NOAA Aviation Weather Center (METAR)")
+                    elif fn_name == "get_agricultural_advisory":
+                        sources.append("ICAR / IMD Agromet Engine")
+                    elif fn_name == "get_climatology":
+                        sources.append("ECMWF ERA5 Reanalysis")
+                    else:
+                        sources.append("open-meteo")
+
+                    # Verified Factual Template Generation (Item #8 Anti-Hallucination)
+                    factual_text: Optional[str] = None
+                    try:
+                        if fn_name == "get_current_weather" and parsed_res:
+                            factual_text = format_current_weather(ForecastPoint.model_validate(parsed_res), language=language)
+                        elif fn_name == "get_forecast" and parsed_res:
+                            factual_text = format_forecast(ForecastTimeline.model_validate(parsed_res), language=language)
+                        elif fn_name == "get_alerts" and parsed_res:
+                            factual_text = format_alerts(AlertListResponse.model_validate(parsed_res), language=language)
+                        elif fn_name == "get_marine_weather" and parsed_res:
+                            factual_text = format_marine_weather(MarinePoint.model_validate(parsed_res))
+                        elif fn_name == "get_aviation_weather" and parsed_res:
+                            factual_text = format_aviation_weather(AviationWeather.model_validate(parsed_res))
+                        elif fn_name == "get_agricultural_advisory" and parsed_res:
+                            factual_text = format_crop_advisory(CropAdvisoryReport.model_validate(parsed_res))
+                        elif fn_name == "get_climatology" and parsed_res:
+                            factual_text = parsed_res.get("narrative_summary")
+                    except Exception as exc:
+                        logger.debug("Factual template generation skipped for %s: %s", fn_name, exc)
+
+                    if factual_text:
+                        last_factual_template = factual_text
+                        tool_content = (
+                            f"{result}\n\n"
+                            f"[DETERMINISTIC FACTUAL SUMMARY — PRESERVE THESE VALUES AND CORE FACTS EXACTLY]:\n"
+                            f"{factual_text}"
+                        )
+                    else:
+                        tool_content = result
                 else:
-                    sources.append("open-meteo")
-            else:
-                result = json.dumps({"error": f"Unknown tool: {fn_name}"})
-                logger.warning("Unknown tool requested: %s", fn_name)
+                    tool_content = json.dumps({"error": f"Unknown tool: {fn_name}"})
+                    logger.warning("Unknown tool requested: %s", fn_name)
 
-            # Append tool result to conversation loop
-            llm_messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
-            })
-    else:
-        # Exhausted max rounds — force a response without tools
-        logger.warning("Hit max tool rounds (%d), forcing final response", _MAX_TOOL_ROUNDS)
-        response = await litellm.acompletion(
-            model=settings.LLM_MODEL,
-            messages=llm_messages,
-            api_key=settings.LLM_API_KEY,
-            temperature=0.3,
-        )
-        response_message = response.choices[0].message
+                # Append tool result to conversation loop
+                llm_messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": tool_content,
+                })
+        else:
+            # Exhausted max rounds — force a response without tools
+            logger.warning("Hit max tool rounds (%d), forcing final response", _MAX_TOOL_ROUNDS)
+            response = await litellm.acompletion(
+                model=settings.LLM_MODEL,
+                messages=llm_messages,
+                api_key=settings.LLM_API_KEY,
+                temperature=0.3,
+            )
+            response_message = response.choices[0].message
 
-    reply = response_message.content or "I'm sorry, I couldn't generate a response. Please try again."
+        reply = response_message.content or last_factual_template or "I'm sorry, I couldn't generate a response. Please try again."
+    except Exception as exc:
+        logger.warning("LLM generation loop failed (%s); checking factual template fallback", exc)
+        if last_factual_template:
+            reply = last_factual_template
+        else:
+            raise
 
     # Update conversation history with user message and assistant reply
     new_history = list(history)

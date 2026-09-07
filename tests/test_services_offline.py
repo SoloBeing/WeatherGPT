@@ -524,6 +524,69 @@ async def test_era5_climatology_and_historical_normals():
         await close_geocoder()
 
 
+@pytest.mark.asyncio
+async def test_chat_router_dynamic_source_attribution_and_templates():
+    """Verify chat router dynamically attributes sources and uses verified factual templates."""
+    import json
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock, patch
+    from app.core.router import chat
+    from app.models.schemas import ForecastPoint
+
+    mock_point = ForecastPoint(
+        lat=28.61,
+        lon=77.20,
+        location_name="Delhi",
+        temperature_c=31.5,
+        feels_like_c=34.0,
+        humidity_pct=65.0,
+        wind_speed_kmh=12.0,
+        weather_description="Partly Cloudy",
+        source="NOAA GFS (0.25° NWP - 2026-09-07_00Z)",
+        issued_at=datetime.now(timezone.utc),
+        valid_at=datetime.now(timezone.utc),
+    )
+
+    # 1. Simulate tool call response from litellm
+    mock_tool_call = MagicMock()
+    mock_tool_call.id = "call_gfs_123"
+    mock_tool_call.function.name = "get_current_weather"
+    mock_tool_call.function.arguments = json.dumps({"location": "Delhi"})
+
+    tool_call_msg = MagicMock()
+    tool_call_msg.tool_calls = [mock_tool_call]
+    tool_call_msg.content = None
+    tool_call_msg.model_dump.return_value = {
+        "role": "assistant",
+        "tool_calls": [{"id": "call_gfs_123", "function": {"name": "get_current_weather", "arguments": "{}"}}],
+    }
+
+    first_response = MagicMock()
+    first_response.choices = [MagicMock(message=tool_call_msg)]
+
+    async def fake_acompletion(*args, **kwargs):
+        messages = kwargs.get("messages", [])
+        if any(m.get("role") == "tool" for m in messages):
+            # Second round: LLM fails -> triggers factual template fallback
+            raise RuntimeError("Vendor LLM Rate Limited")
+        return first_response
+
+    from unittest.mock import AsyncMock
+
+    with patch("litellm.acompletion", side_effect=fake_acompletion):
+        with patch.dict("app.core.router._TOOL_DISPATCH", {"get_current_weather": AsyncMock(return_value=mock_point.model_dump_json())}):
+            res = await chat("What's the weather in Delhi?", language="hi")
+            assert res.data is not None
+            assert res.data["temperature_c"] == 31.5
+            # Dynamic source attribution: NOAA GFS NWP, not open-meteo!
+            assert "NOAA GFS (0.25° NWP - 2026-09-07_00Z)" in res.sources
+            # Anti-hallucination factual template in Hindi
+            assert "तापमान" in res.reply or "Delhi" in res.reply
+            assert "31.5" in res.reply
+
+
+
+
 
 
 
