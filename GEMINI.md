@@ -147,24 +147,30 @@ app/
 - ✅ **Dev Session 04 (`app/` production layout)** — Shortened development scaffolding module names to production hierarchy (`app/api/`, `app/core/`, `app/tools/`, `app/models/`, `app/pipelines/`, `app/services/`).
 - ✅ **Dev Session 05 (Robustness & Fault Tolerance)** — Jittered exponential backoff, HTTP error classification, Zarr integrity validation, and GFS cycle failover.
 - ✅ **Dev Session 06 (Scalability & Performance Auditing)** — Asyncpg (`DB_POOL_SIZE=20`), Redis (`ConnectionPool`), and HTTP client (`httpx.Limits`) connection pooling, `SingleFlight` coalescing, vectorized 1D Zarr index slicing, and GIN trigram indexes.
-- ✅ **Session 07 (Containerization, Kubernetes & Final Shipping)** — Multi-stage Dockerfile with Astral `uv` and non-root security (`weathergpt:10001`), full-stack `docker-compose.yml` (PostgreSQL PostGIS/TimescaleDB, Redis, MinIO, bucket init, migrations, API, and worker), 13 declarative Kubernetes manifests with Horizontal Pod Autoscaler (2-10 replicas) and NGINX Ingress WebSocket proxy, automated 8-step system demonstration runner (`scripts/demo.py`), and deployment test suite (`tests/test_session_07.py`) achieving 42/42 tests passing with 0 warnings.
-- **LLM Provider:** Groq (`groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
+- ✅ **Dev Session 07 (Multi-Domain SIH Expansion, Provenance & Peer Review Resolution)** — Resolved all 12 peer review findings:
+  - **Marine & Coastal Domain:** Open-Meteo Marine + INCOIS Douglas sea state classification, wave/swell analytics, and Potential Fishing Zone (PFZ) advisory engine (`get_marine_weather`).
+  - **Aviation Weather Domain:** NOAA Aviation Weather Center live METAR integration with flight category (VFR/MVFR/IFR/LIFR), cloud ceilings, runway visibility, and 25+ Indian airport mappings (`get_aviation_weather`).
+  - **Agricultural Agromet Domain:** ICAR / IMD Agromet rule engine evaluating 5-day NWP rain/temperature/wind forecasts against crop growth stages for Rice, Wheat, Cotton, Mustard, Pulses, Sugarcane (`get_agricultural_advisory`).
+  - **Historical Climatology Domain:** ECMWF ERA5 reanalysis archive client computing WMO 30-year normals, standard deviations, decadal warming trends, and recent anomalies (`get_climatology`).
+  - **Data Provenance Transparency:** Surfaced `data_quality: "verified" | "synthetic"` across all schemas and explicitly labelled synthetic sandbox fallbacks without silent masquerading.
+  - **Live NDMA SACHET JSON Feed:** Integrated live `FetchAllAlertDetails` endpoint with strict `expires_at >= now` filtering and honest `"status": "Exercise"` sandbox tagging.
+  - **Proactive FCM Push Notification Wiring:** Connected SACHET poller listener events directly to `fcm_service.push_alert` and `app/main.py` startup lifespan.
+  - **Anti-Hallucination Verified Response Templates:** Integrated `app/core/templates.py` formatters across all 6 meteorological tools, enforcing exact factual preservation in Indic languages and providing verified template fallback during vendor LLM outages.
+  - **Dynamic Source Attribution:** Replaced hardcoded sources in `/chat` with dynamic inspection of `parsed_res["source"]` for NOAA GFS, INCOIS, Aviation Weather Center, ICAR Agromet, ECMWF ERA5, and SACHET NDMA.
+  - **API Hygiene & Configuration:** Fixed CORS credentials with wildcard origins (`allow_credentials=False`), sanitized 500 error responses in `/chat`, reported `"degraded"` status in `/health` when databases are offline, and auto-detected Groq keys (`gsk_...`).
+  - **Frontend & TypeScript Synchronization:** Synchronized `docs/FRONTEND_HANDOFF.md` and `docs/weathergpt-types.ts` with WebSocket initial snapshot (`type: "init"`), SIH domain schemas, direct REST endpoints, and `data_quality` fields.
+- ✅ **Session 07 (Containerization, Kubernetes & Final Shipping)** — Multi-stage Dockerfile with Astral `uv` and non-root security (`weathergpt:10001`), full-stack `docker-compose.yml` (PostgreSQL PostGIS/TimescaleDB, Redis, MinIO, bucket init, migrations, API, and worker), 13 declarative Kubernetes manifests with Horizontal Pod Autoscaler (2-10 replicas) and NGINX Ingress WebSocket proxy, automated 8-step system demonstration runner (`scripts/demo.py`), and test suite achieving 50/50 tests passing with 0 warnings.
+- **LLM Provider:** Groq (`groq/llama-3.3-70b-versatile` or `groq/openai/gpt-oss-120b` main, `groq/qwen/qwen3.8-27b` intent)
 - **Data Sources Reference:** `weather_gpt_structure.md` documents 8 sources (Open-Meteo, IMD api.imd.gov.in, GFS, ECMWF, NASA POWER, WIS2.0, ERA5, MOSDAC)
 
-## Session 07 Summary (`logs/07-session/summary.md`)
+## Session 07 Summary (`logs/07-session/summary.md` & `dev-logs/07-dev-session/summary.md`)
 
-- **Focus:** Multi-stage containerization with Astral uv, Docker Compose full-stack orchestration, production Kubernetes manifests with HPA and StatefulSets, end-to-end demo runner, and final shipping verification.
-- **Commits:**
-  - `1bc5f39`: `feat(deploy): implement production multi-stage Dockerfile and entrypoint script`
-  - `22a5386`: `feat(deploy): implement full-stack docker compose orchestration and dev override`
-  - `6aed4a1`: `feat(deploy): implement production Kubernetes manifests with HPA, StatefulSets, and Ingress`
-  - `34bb346`: `feat(demo): implement end-to-end demo runner and deployment test suite`
-  - `6d65e3f`: `feat(api): add direct REST endpoints for weather, alerts, location search, and export TypeScript types`
-- **Result:** 42/42 tests passing in ~13s with 0 warnings under strict `-W error` enforcement.
+- **Focus:** Multi-stage containerization with Astral uv, Docker Compose full-stack orchestration, production Kubernetes manifests with HPA and StatefulSets, end-to-end demo runner, multi-domain SIH expansion, transparent data provenance, and peer review resolution.
+- **Result:** 50/50 tests passing in ~21s with 0 warnings under strict `-W error` enforcement.
 
 ## Production Status & Roadmap Completion
 
-All 7 core milestones and 6 dev-refactoring sessions are complete. The WeatherGPT platform is fully packaged, tested, resilient, and ready for competition judging and live deployment.
+All 7 core milestones and 7 dev-refactoring sessions are complete. The WeatherGPT platform is an honest, fully multi-domain, resilient meteorological system ready for live deployment and hackathon judging.
 
 ## 7-Day Roadmap (2026-08-31 → 2026-09-06) — COMPLETE 🎯
 
@@ -183,6 +189,7 @@ All 7 core milestones and 6 dev-refactoring sessions are complete. The WeatherGP
 | — | **Dev-05** | ✅ Robustness & Fault Tolerance (Backoff, Retries, Offline) | Maintainability |
 | — | **Dev-06** | ✅ Scalability & Performance Auditing (Pools, Batching, Caching) | Maintainability |
 | 7 (Sep 06) | **07** | ✅ Docker Compose, K8s manifests, demo prep, final shipping | Ship |
+| — | **Dev-07** | ✅ Multi-Domain SIH Expansion, Provenance Transparency & Review Resolution | Audit |
 
 
 
