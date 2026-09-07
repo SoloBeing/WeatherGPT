@@ -328,3 +328,37 @@ async def test_sachet_json_parsing_and_expiry_filtering():
     assert len(matches) >= 1
     assert matches[0].status == "Exercise"
 
+
+@pytest.mark.asyncio
+async def test_incois_marine_weather_and_pfz():
+    """Verify INCOIS marine ocean state and PFZ advisory generation."""
+    import json
+    from app.data_sources.incois import incois_client
+    from app.tools.marine import get_marine_weather
+    from app.core.router import _TOOL_DISPATCH
+
+    try:
+        # 1. Direct client call
+        point = await incois_client.fetch_marine_weather(lat=13.0827, lon=80.2707, location_name="Chennai Coast")
+        assert point.wave_height_m is not None
+        assert point.sea_state in ("Calm", "Smooth", "Moderate", "Rough", "Very Rough", "High to Phenomenal")
+        assert any(term in point.safety_status for term in ("Safe", "Caution", "Warning", "Emergency"))
+        assert "PFZ" in point.pfz_advisory or "fishing" in point.pfz_advisory.lower()
+
+        # 2. Tool invocation via resolver
+        marine_json = await get_marine_weather(location="Kochi Coast")
+        data = json.loads(marine_json)
+        assert "wave_height_m" in data
+        assert "sea_state" in data
+        assert "safety_status" in data
+        assert "pfz_advisory" in data
+
+        # 3. Router dispatch confirmation
+        assert "get_marine_weather" in _TOOL_DISPATCH
+    finally:
+        from app.tools.location_resolver import close_geocoder
+        await close_geocoder()
+        await incois_client.close()
+
+
+

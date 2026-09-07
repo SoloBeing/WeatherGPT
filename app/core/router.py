@@ -27,6 +27,7 @@ from app.models.schemas import ChatResponse
 from app.tools.alerts_tool import get_alerts
 from app.tools.current import get_current_weather
 from app.tools.forecast import get_forecast
+from app.tools.marine import get_marine_weather
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +46,20 @@ You are WeatherGPT, a helpful and friendly weather assistant specialising in Ind
    or weekend forecasts, call `get_forecast`.
 4. When a user asks about disaster alerts, warnings, cyclones, floods, heavy rain alerts,
    heatwaves, thunderstorms, or emergencies, call `get_alerts`.
-5. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
+5. When a user asks about marine weather, sea conditions, wave height, swell, ocean currents,
+   sea surface temperature, or fishing / PFZ advisories for coastal regions, call `get_marine_weather`.
+6. If a user refers to a location mentioned earlier in the conversation (e.g. "any alerts there?"),
    use that location in your tool call.
-6. After receiving tool results, present the data conversationally and clearly:
+7. After receiving tool results, present the data conversationally and clearly:
    - For multi-day forecasts: summarize each day with date/day, conditions, min-max temps, and rain probability.
    - For disaster alerts: highlight the severity level (Red/Extreme, Orange/Severe, Yellow/Moderate), affected areas, and safety instructions clearly.
-   - Always mention the data source (e.g. "According to NDMA SACHET / IMD..." or "According to Open-Meteo...").
-7. If a tool returns an error or no alerts found, inform the user honestly.
-8. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
-9. If the user speaks in Hindi or another Indian language, respond in that language while keeping
+   - For marine reports: clearly state wave height, sea state, safety advisory for fishermen, and PFZ coordinates.
+   - Always mention the data source (e.g. "According to NDMA SACHET / IMD...", "According to INCOIS...", or "According to Open-Meteo...").
+8. If a tool returns an error or no alerts found, inform the user honestly.
+9. For greetings, chit-chat, or non-weather questions, respond naturally without calling tools.
+10. If the user speaks in Hindi or another Indian language, respond in that language while keeping
    numbers and units in standard form.
-10. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ ☀️ 🌧️ etc.).
+11. Be concise, well-structured, and helpful. Use emoji sparingly to enhance readability (🚨 🌤️ 🌊 ☀️ 🌧️ etc.).
 """
 
 # ---------------------------------------------------------------------------
@@ -148,6 +152,29 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_marine_weather",
+            "description": (
+                "Get marine weather, wave height, swell, sea state, and INCOIS Potential Fishing "
+                "Zone (PFZ) advisories for coastal regions, ports, and offshore waters."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": (
+                            "Coastal city, port, or region name, e.g. 'Chennai', 'Kochi', 'Mumbai', "
+                            "'Visakhapatnam', 'Goa', 'Puri'."
+                        ),
+                    },
+                },
+                "required": ["location"],
+            },
+        },
+    },
 ]
 
 # Map tool names → async callables
@@ -155,6 +182,7 @@ _TOOL_DISPATCH: dict = {
     "get_current_weather": get_current_weather,
     "get_forecast": get_forecast,
     "get_alerts": get_alerts,
+    "get_marine_weather": get_marine_weather,
 }
 
 # Maximum tool-calling rounds to prevent infinite loops

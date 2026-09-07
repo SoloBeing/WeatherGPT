@@ -101,6 +101,31 @@ class ForecastTimeline(BaseModel):
     hourly: Optional[list[HourlyForecast]] = Field(None, description="Hourly forecast slices (optional)")
 
 
+class MarinePoint(BaseModel):
+    """Marine weather and ocean state report.
+
+    Provides sea conditions, wave/swell metrics, and INCOIS Potential
+    Fishing Zone (PFZ) advisories for coastal and offshore regions.
+    """
+
+    source: str = Field(default="INCOIS / Marine NWP", description="Data source identifier")
+    data_quality: Optional[str] = Field("verified", description="Data quality: 'verified' or 'synthetic'")
+    location_name: str
+    lat: float
+    lon: float
+    issued_at: datetime = Field(..., description="Timestamp of ocean state analysis")
+    wave_height_m: Optional[float] = Field(None, description="Significant wave height in metres")
+    wave_direction_deg: Optional[float] = Field(None, description="Wave direction in degrees")
+    wave_period_s: Optional[float] = Field(None, description="Wave period in seconds")
+    swell_wave_height_m: Optional[float] = Field(None, description="Swell wave height in metres")
+    swell_wave_period_s: Optional[float] = Field(None, description="Swell period in seconds")
+    sea_surface_temp_c: Optional[float] = Field(None, description="Sea Surface Temperature (SST) in °C")
+    ocean_current_velocity_ms: Optional[float] = Field(None, description="Ocean current velocity in m/s")
+    sea_state: str = Field(..., description="Sea state condition: Calm, Slight, Moderate, Rough, Very Rough, High")
+    safety_status: str = Field(..., description="Fishermen safety recommendation: Safe, Caution, Warning: Do Not Venture")
+    pfz_advisory: str = Field(..., description="Potential Fishing Zone (PFZ) advisory description")
+
+
 class LocationMatch(BaseModel):
     """Geocoding result from location resolution."""
 

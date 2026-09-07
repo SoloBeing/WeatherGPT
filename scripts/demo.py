@@ -28,6 +28,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# Ensure robust UTF-8 output on all consoles (including Windows)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 # Terminal styling
 BOLD = "\033[1m"
@@ -284,10 +296,10 @@ async def demo_chat_loop(mode: str = "simulated") -> None:
 
 
 
-async def main_demo() -> int:
+async def main_demo(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="WeatherGPT End-to-End System Demo")
     parser.add_argument("--mode", choices=["simulated", "live"], default="simulated", help="Execution mode")
-    args = parser.parse_args()
+    args = parser.parse_args(args=argv if argv is not None else [])
 
     header("WeatherGPT — Conversational AI for Meteorological Intelligence", "🌦️")
     print(f"Mode: {BOLD}{args.mode.upper()}{RESET} | Python: {sys.version.split()[0]} | Fast, Deterministic & Multilingual\n")
@@ -308,7 +320,26 @@ async def main_demo() -> int:
         import traceback
         traceback.print_exc()
         return 1
+    finally:
+        from app.tools.location_resolver import close_geocoder
+        from app.data_sources.openmeteo import openmeteo_client
+        from app.services.bhashini import bhashini_service
+        from app.pipelines.sachet_poller import sachet_poller
+        from app.data_sources.gfs import gfs_client
+        from app.data_sources.incois import incois_client
 
+        for cleanup_coro in (
+            close_geocoder(),
+            openmeteo_client.close(),
+            bhashini_service.close(),
+            sachet_poller.close(),
+            gfs_client.close(),
+            incois_client.close(),
+        ):
+            try:
+                await cleanup_coro
+            except Exception:
+                pass
 
     total_time = (time.perf_counter() - t_start) * 1000
     header(f"All 8 Demonstration Steps Succeeded in {total_time:.1f}ms", "🚀")
@@ -317,4 +348,5 @@ async def main_demo() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main_demo()))
+    sys.exit(asyncio.run(main_demo(sys.argv[1:])))
+
